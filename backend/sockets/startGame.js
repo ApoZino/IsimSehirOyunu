@@ -2,17 +2,20 @@
 module.exports = (socket, io, rooms, startNewRound) => {
     socket.on('startGame', ({ roomCode, categories, totalRounds }) => {
         const room = rooms[roomCode];
-        // Ensure the player is the host (first player in the array)
+        // Sadece odanın kurucusu (hakem) oyunu başlatabilir
         if (room && room.players.length > 0 && room.players[0].id === socket.id) {
             if (room.gameStarted) {
-                return socket.emit('error', { message: 'Oyun zaten başlamış.' });
+                socket.emit('error', { message: 'Oyun zaten başlamış.' });
+                return;
             }
             room.totalRounds = totalRounds || 5;
-            room.currentRound = 0; // Reset for a new game
+            room.currentRound = 0; // Yeni oyun için sıfırla
             room.categories = categories || ['isim', 'şehir', 'hayvan', 'bitki', 'eşya'];
-            Object.keys(room.playerScores).forEach(playerId => { room.playerScores[playerId] = 0; }); // Reset scores
-            console.log(`Oda ${roomCode} için oyun başlatıldı. Tur sayısı: ${room.totalRounds}, Kategoriler: ${room.categories.join(', ')}`);
-            startNewRound(io, rooms, roomCode); // Call the helper function
+            // Tüm oyuncuların skorlarını sıfırla
+            Object.keys(room.playerScores).forEach(playerId => { room.playerScores[playerId] = 0; });
+            
+            console.log(`Oda ${roomCode} için oyun başlatıldı. Tur sayısı: ${room.totalRounds}, Kategoriler: ${JSON.stringify(room.categories)}`);
+            startNewRound(io, rooms, roomCode); // Yardımcı fonksiyonu çağır
         } else {
             socket.emit('error', { message: 'Sadece odanın kurucusu oyunu başlatabilir veya oda bulunamadı.' });
         }

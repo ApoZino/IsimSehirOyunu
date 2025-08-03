@@ -1,83 +1,93 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native'; // ActivityIndicator eklendi
-import { socket } from '../services/socket';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { View, Text, TextInput, Button, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
+import { socket } from '../services/socket'; // Socket bağlantınız
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Kullanıcı adı kaydetmek için
 
 const HomeScreen = ({ navigation }) => {
   const [username, setUsername] = useState('');
   const [roomCode, setRoomCode] = useState('');
-  const [isLoading, setIsLoading] = useState(false); // Yükleme durumu için
+  const [isLoading, setIsLoading] = useState(false); // Yükleme durumu için state
 
+  // Component yüklendiğinde kullanıcı adını AsyncStorage'dan yükle
   useEffect(() => {
     const loadUsername = async () => {
       try {
         const savedUsername = await AsyncStorage.getItem('username');
         if (savedUsername !== null) {
           setUsername(savedUsername);
+          console.log('HomeScreen: Kaydedilen kullanıcı adı yüklendi:', savedUsername);
         }
       } catch (e) {
-        console.error('Kullanıcı adı yüklenirken hata oluştu', e);
+        console.error('HomeScreen: Kullanıcı adı yüklenirken hata oluştu:', e.message || e);
       }
     };
     loadUsername();
 
     // Socket bağlantısı için genel hata dinleyicisi
     const onError = (data) => {
+        console.error('HomeScreen: Sunucu Hatası alındı:', JSON.stringify(data, null, 2));
         setIsLoading(false); // Hata durumunda yüklemeyi durdur
         Alert.alert('Hata', data.message || 'Bir hata oluştu.');
     };
     socket.on('error', onError);
 
-    // Oda oluşturma ve katılma olayları için kalıcı dinleyiciler
-    // Bu dinleyiciler, başarılı olduktan sonra navigation yapacaklar.
+    // Oda oluşturulduğunda veya odaya katıldığında tetiklenecek dinleyiciler
     const onRoomCreated = (data) => {
-        setIsLoading(false);
-        navigation.navigate('Lobby', { ...data, username });
+        console.log('HomeScreen: "roomCreated" olayı alındı:', JSON.stringify(data, null, 2));
+        setIsLoading(false); // Yüklemeyi durdur
+        navigation.navigate('Lobby', { ...data, username }); // Lobi ekranına yönlendir
     };
 
     const onRoomJoined = (data) => {
-        setIsLoading(false);
-        navigation.navigate('Lobby', { ...data, username });
+        console.log('HomeScreen: "roomJoined" olayı alındı:', JSON.stringify(data, null, 2));
+        setIsLoading(false); // Yüklemeyi durdur
+        navigation.navigate('Lobby', { ...data, username }); // Lobi ekranına yönlendir
     };
 
     socket.on('roomCreated', onRoomCreated);
     socket.on('roomJoined', onRoomJoined);
 
-    // Component unmount olduğunda dinleyicileri temizle
+    // Component unmount olduğunda veya effect yeniden çalıştığında dinleyicileri temizle
     return () => {
+        console.log('HomeScreen: Socket dinleyicileri temizleniyor.');
         socket.off('error', onError);
         socket.off('roomCreated', onRoomCreated);
         socket.off('roomJoined', onRoomJoined);
     };
-  }, [username, navigation]); // username ve navigation bağımlılık olarak eklendi
+  }, [username, navigation]); // `username` ve `navigation` bağımlılık olarak eklendi
 
+  // Kullanıcı adı değiştiğinde state'i ve AsyncStorage'ı güncelle
   const handleUsernameChange = async (text) => {
     setUsername(text);
     try {
       await AsyncStorage.setItem('username', text);
     } catch (e) {
-      console.error('Kullanıcı adı kaydedilirken hata oluştu', e);
+      console.error('HomeScreen: Kullanıcı adı kaydedilirken hata oluştu:', e.message || e);
     }
   };
 
+  // Yeni oda oluşturma işlemi
   const handleCreateRoom = () => {
     if (!username) {
       Alert.alert('Hata', 'Lütfen bir kullanıcı adı girin.');
       return;
     }
     setIsLoading(true); // Yüklemeyi başlat
-    socket.connect(); // Bağlantıyı kur
-    socket.emit('createRoom', username);
+    socket.connect(); // Socket bağlantısını kurmaya çalış
+    console.log('HomeScreen: "createRoom" isteği gönderiliyor. Socket bağlı mı:', socket.connected);
+    socket.emit('createRoom', username); // Sunucuya "createRoom" olayını gönder
   };
 
+  // Mevcut odaya katılma işlemi
   const handleJoinRoom = () => {
     if (!username || !roomCode) {
       Alert.alert('Hata', 'Kullanıcı adı ve oda kodu boş bırakılamaz.');
       return;
     }
     setIsLoading(true); // Yüklemeyi başlat
-    socket.connect(); // Bağlantıyı kur
-    socket.emit('joinRoom', { roomCode, username });
+    socket.connect(); // Socket bağlantısını kurmaya çalış
+    console.log('HomeScreen: "joinRoom" isteği gönderiliyor. Oda kodu:', roomCode, 'Socket bağlı mı:', socket.connected);
+    socket.emit('joinRoom', { roomCode, username }); // Sunucuya "joinRoom" olayını gönder
   };
 
   return (

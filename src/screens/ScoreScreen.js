@@ -5,31 +5,30 @@ import { useNavigation } from '@react-navigation/native';
 
 const ScoreScreen = ({ route }) => {
     const navigation = useNavigation();
-    const { results, roomCode } = route.params;
+    // 'finalResults' olarak geliyor, bu yüzden buradan da 'finalResults' olarak almalıyız
+    const { finalResults, roomCode } = route.params;
 
     // Sunucudan yeni tur başlama veya oyun bitme olaylarını dinle
     useEffect(() => {
         const onGameStarted = (data) => {
-            // Düzeltildi: objeyi stringify yapıldı
-            console.log("Yeni tur başladı, Game ekranına yönlendiriliyor:", JSON.stringify(data, null, 2));
+            console.log("ScoreScreen: Yeni tur başladı, Game ekranına yönlendiriliyor:", JSON.stringify(data, null, 2));
             navigation.replace('Game', {
                 letter: data.letter,
                 roomCode: roomCode,
                 duration: data.duration,
                 categories: data.categories,
                 currentRound: data.currentRound,
-                totalRounds: data.totalRounds
+                totalRounds: data.totalRounds,
+                refereeId: data.refereeId // Hakem ID'sini GameScreen'e ilet
             });
         };
 
-        const onGameOver = (finalResults) => {
-            // Düzeltildi: objeyi stringify yapıldı
-            console.log("Oyun bitti, GameOver ekranına yönlendiriliyor:", JSON.stringify(finalResults, null, 2));
-            navigation.replace('GameOver', { finalResults });
+        const onGameOver = (data) => { // 'finalResults' yerine 'data' kullandım çünkü server'dan genel data objesi geliyor.
+            console.log("ScoreScreen: Oyun bitti, GameOver ekranına yönlendiriliyor:", JSON.stringify(data, null, 2));
+            navigation.replace('GameOver', { finalResults: data }); // `finalResults` olarak iletiyoruz
         };
 
         const onError = (error) => {
-            // Düzeltildi: error objesi yerine error.message kullanıldı
             console.error("ScoreScreen'de Sunucu Hatası:", error.message || error);
             Alert.alert("Hata", error.message || "Bir hata oluştu.");
         };
@@ -45,10 +44,11 @@ const ScoreScreen = ({ route }) => {
         };
     }, [navigation, roomCode]);
 
-    // Sonuçları puana göre sırala (isteğe bağlı)
-    const sortedResults = Array.isArray(results) ? results.sort((a, b) => b.totalScore - a.totalScore) : [];
+    // Sonuçları puana göre sırala
+    // `finalResults` bir dizi olmalı, her elemanı bir oyuncunun tur sonuçları olmalı.
+    const sortedResults = Array.isArray(finalResults) ? finalResults.sort((a, b) => b.totalScore - a.totalScore) : [];
 
-    if (!Array.isArray(results) || results.length === 0) {
+    if (!Array.isArray(finalResults) || finalResults.length === 0) {
         return (
             <View style={styles.container}>
                 <Text style={styles.title}>Tur Sonuçları</Text>
@@ -61,6 +61,7 @@ const ScoreScreen = ({ route }) => {
         <ScrollView contentContainerStyle={styles.container}>
             <Text style={styles.title}>Tur Sonuçları!</Text>
             {sortedResults.map((playerResult, index) => (
+                // playerResult.username'in null/undefined olabileceği durumlar için alternatif key
                 <View key={playerResult.username || `player-${index}`} style={styles.playerCard}>
                     <Text style={styles.playerRank}>#{index + 1}</Text>
                     <Text style={styles.playerName}>{playerResult.username || 'Bilinmeyen Oyuncu'}</Text>
@@ -80,8 +81,8 @@ const ScoreScreen = ({ route }) => {
                             ))}
                         </>
                     )}
-                    {!playerResult.answers || Object.keys(playerResult.answers).length === 0 && (
-                        <Text style={styles.noAnswersText}>Cevap girmedi.</Text>
+                    {!playerResult.answers || Object.keys(playerResult.answers).filter(cat => playerResult.answers[cat] && playerResult.answers[cat].trim() !== '').length === 0 && (
+                        <Text style={styles.noAnswersText}>Bu turda cevap girmedi.</Text>
                     )}
                 </View>
             ))}

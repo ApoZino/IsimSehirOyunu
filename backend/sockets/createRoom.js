@@ -17,15 +17,15 @@ module.exports = (socket, io, rooms) => {
             votes: {},
             playerVotes: {},
             timerId: null,
-            refereeId: socket.id, // <-- NEW: Assign the creator as the referee
+            refereeId: socket.id, // Hakem: Odayı kuran kişi hakem olur
         };
 
-        const player = { id: socket.id, username, isReferee: true }; // <-- NEW: Mark player as referee
+        const player = { id: socket.id, username, isReferee: true }; // Hakem: Oyuncuyu hakem olarak işaretle
         rooms[roomCode].players.push(player);
         rooms[roomCode].playerScores[socket.id] = 0;
         socket.join(roomCode);
 
-        // Emit room created with updated player info (including isReferee)
+        // Odayı oluşturma bilgisini güncel oyuncu bilgisi (isReferee dahil) ve hakem ID'si ile gönder
         socket.emit('roomCreated', { roomCode, players: rooms[roomCode].players, refereeId: rooms[roomCode].refereeId });
         console.log(`Oda oluşturuldu: ${roomCode} tarafından ${username}. Hakem: ${username} (${socket.id})`);
     });

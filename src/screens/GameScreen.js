@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native'; // ActivityIndicator eklendi
+import { View, Text, TextInput, Button, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { socket } from '../services/socket';
 
 const GameScreen = ({ route, navigation }) => {
-  const { letter, roomCode, duration, categories, currentRound, totalRounds } = route.params;
+  // `refereeId`'yi de route.params'tan alıyoruz, GameScreen'den VotingScreen'e iletilecek
+  const { letter, roomCode, duration, categories, currentRound, totalRounds, refereeId } = route.params;
 
   const [answers, setAnswers] = useState({});
   const [timeLeft, setTimeLeft] = useState(duration || 300); // Tur süresi veya 300 saniye
   const [isFinalCountdown, setIsFinalCountdown] = useState(false); // 15 saniyelik geri sayım aktif mi?
   const [submitted, setSubmitted] = useState(false); // Oyuncu cevaplarını gönderdi mi?
-  const [isGameLoading, setIsGameLoading] = useState(false); // Oyun durumu yükleniyor/bekleniyor mu?
+  const [isGameLoading, setIsGameLoading] = useState(true); // Başlangıçta true, oyun verisi gelince false olur
   
   const timerIntervalRef = useRef(null); // Zamanlayıcı ID'sini tutmak için useRef
 
@@ -51,54 +52,42 @@ const GameScreen = ({ route, navigation }) => {
 
   // --- Socket Olay Dinleyicileri ---
   useEffect(() => {
-    setIsGameLoading(true); // Oyun ekranı yüklenirken veya tur başlangıcında yükleme göster
-    
-    const onGameStarted = (data) => {
-        // Düzeltildi: objeyi stringify yapıldı
-        console.log('GameScreen: Yeni tur başladı, veri:', JSON.stringify(data, null, 2));
-        // Resetleme:
-        setTimeLeft(data.duration);
-        setAnswers({});
-        setIsFinalCountdown(false);
-        setSubmitted(false);
-        setIsGameLoading(false); // Yüklemeyi bitir
-        // route.params güncellemeleri için navigation.replace kullanılmıyor,
-        // GameScreen zaten route.params'ı alıyor. Eğer bir sonraki tur aynı GameScreen üzerinde devam edecekse,
-        // bu parametreler zaten route.params içinde güncel olarak gelmelidir.
-        // Ancak navigasyonun kendisi GameScreen'e döndüğünde tetiklenir ve route.params güncellenir.
-        // Buradaki data tur verileri için kullanılır.
-    };
+    // `isGameLoading` true olarak başladığı için, `onGameStarted` gelince bunu false yaparız.
+    // Bu useEffect sadece bir kez çalışmalı (component mount olduğunda) veya her tur başında resetlenmeli
+    // const onGameStarted = (data) => { // Bu fonksiyon zaten tanımlı olduğu için tekrar tanımlamıyoruz
+    //   console.log('GameScreen: onGameStarted olayı alındı. Veri:', JSON.stringify(data, null, 2));
+    //   setTimeLeft(data.duration);
+    //   setAnswers({});
+    //   setIsFinalCountdown(false);
+    //   setSubmitted(false);
+    //   setIsGameLoading(false);
+    // };
 
     const onRoundOver = (results) => {
-      // Düzeltildi: objeyi stringify yapıldı
       console.log('GameScreen: Tur Bitti! Sonuçlar:', JSON.stringify(results, null, 2));
       if (timerIntervalRef.current) { // Zamanlayıcıyı temizle
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
       setIsGameLoading(false); // Yüklemeyi bitir
-      // ScoreScreen'e yönlendir
       navigation.replace('Score', { results, roomCode });
     };
 
     const onFinalCountdown = ({ duration: finalDuration }) => {
-      // Düzeltildi: objeyi stringify yapıldı
       console.log('GameScreen: Son Geri Sayım Başladı! Süre:', JSON.stringify({ finalDuration }, null, 2));
       setIsFinalCountdown(true); // "Son 15 saniye!" metnini göstermek için
       
-      // Mevcut ana zamanlayıcıyı durdur (zaten yukarıdaki useEffect içinde de var ama burada da emin olalım)
+      // Mevcut ana zamanlayıcıyı durdur
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
       
-      // Yeni, 15 saniyelik geri sayımı başlat
       setTimeLeft(finalDuration); // Geri sayım süresini 15 olarak ayarla
       // timeLeft'ın güncellenmesi, yukarıdaki ilk useEffect'i tetikleyerek yeni bir interval başlatacaktır.
     };
 
     const onVotingStarted = (data) => {
-      // Düzeltildi: objeyi stringify yapıldı
       console.log('GameScreen: Oylama başladı! Voting ekranına yönlendiriliyor. Veri:', JSON.stringify(data, null, 2));
       if (timerIntervalRef.current) { // Zamanlayıcıyı durdur
         clearInterval(timerIntervalRef.current);
@@ -116,30 +105,39 @@ const GameScreen = ({ route, navigation }) => {
     };
 
     const onPlayerJoined = (playersList) => {
-        // Düzeltildi: objeyi stringify yapıldı
         console.log("GameScreen: Yeni oyuncu katıldı. Güncel oyuncular:", JSON.stringify(playersList, null, 2));
-        // Eğer oyuncu listesinin güncellenmesi gerekiyorsa burada state'i güncelleyebiliriz,
-        // ama GameScreen genelde oyunun başlamış haliyle ilgilenir.
     };
 
     const onError = (error) => {
-        // Düzeltildi: error objesi yerine error.message kullanıldı
         console.error("GameScreen'de Sunucu Hatası:", error.message || error);
         Alert.alert("Hata", error.message || "Bir hata oluştu.");
         setIsGameLoading(false); // Hata durumunda yüklemeyi bitir
     };
 
     // Socket olaylarını dinlemeye başla
-    socket.on('gameStarted', onGameStarted);
     socket.on('roundOver', onRoundOver);
     socket.on('finalCountdown', onFinalCountdown);
     socket.on('votingStarted', onVotingStarted);
-    socket.on('playerJoined', onPlayerJoined); // Oyuncu katılımını izlemek için
+    socket.on('playerJoined', onPlayerJoined);
     socket.on('error', onError);
+
+    // Yeni tur başladığında tetiklenecek olay
+    // Bu fonksiyonu doğrudan burada tanımlıyoruz ki `onGameStarted` adı çakışmasın
+    // ve component yüklendiğinde bir kez çalışsın.
+    const handleGameStartedOnMount = (data) => {
+      console.log('GameScreen: Component yüklendiğinde veya yeni tur başlatıldığında onGameStarted olayı alındı. Veri:', JSON.stringify(data, null, 2));
+      setTimeLeft(data.duration);
+      setAnswers({});
+      setIsFinalCountdown(false);
+      setSubmitted(false);
+      setIsGameLoading(false); // Yüklemeyi bitir, oyunu göster
+    };
+    socket.on('gameStarted', handleGameStartedOnMount); // Socket dinleyicisini bu fonksiyona bağla
+
 
     // Temizlik fonksiyonu
     return () => {
-      socket.off('gameStarted', onGameStarted);
+      socket.off('gameStarted', handleGameStartedOnMount); // Doğru fonksiyonu temizle
       socket.off('roundOver', onRoundOver);
       socket.off('finalCountdown', onFinalCountdown);
       socket.off('votingStarted', onVotingStarted);
@@ -149,19 +147,7 @@ const GameScreen = ({ route, navigation }) => {
         clearInterval(timerIntervalRef.current);
       }
     };
-  }, [navigation, roomCode]); // 'submitted' artık bu useEffect'in bağımlılığı değil
-
-  // Tur başında route.params'tan gelen süreyi ayarla
-  // Bu useEffect sadece bir kez çalışmalı (component mount olduğunda) veya her tur başında resetlenmeli
-  // Ancak route.params'tan gelen 'duration' ile timeLeft'ı doğrudan ayarladığımız için
-  // ve 'onGameStarted' event'i ile de resetlediğimiz için ayrı bir useEffect'e gerek kalmayabilir.
-  // const initialDurationSet = useRef(false);
-  // useEffect(() => {
-  //   if (!initialDurationSet.current && duration) {
-  //     setTimeLeft(duration);
-  //     initialDurationSet.current = true;
-  //   }
-  // }, [duration]);
+  }, [navigation, roomCode]); // `submitted` artık bu useEffect'in bağımlılığı değil
 
 
   const handleInputChange = (category, value) => {
@@ -171,7 +157,6 @@ const GameScreen = ({ route, navigation }) => {
   const handleSubmitAnswers = () => {
     if (!submitted) {
       console.log('Cevaplar gönderiliyor...');
-      // Düzeltildi: answers objesi stringify yapıldı
       console.log('Gönderilen cevaplar:', JSON.stringify(answers, null, 2));
       socket.emit('submitAnswers', { roomCode, answers });
       setSubmitted(true); // Cevap gönderildi olarak işaretle

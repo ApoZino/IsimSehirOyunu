@@ -8,15 +8,14 @@ const app = express();
 const server = http.createServer(app);
 const PORT = 3000;
 
-// Centralized game state (important to keep this accessible)
-// This object will be passed to all socket handlers
+// Merkezi oyun durumu (tüm soket handler'ları tarafından erişilebilir olmalı)
 const rooms = {};
 
 const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// Pass the io instance and the rooms object to your socket handlers
+// io örneğini ve rooms objesini soket handler'larınıza iletin
 registerSocketHandlers(io, rooms);
 
 server.listen(PORT, () => {

@@ -6,9 +6,8 @@ const submitAnswersHandler = require('./submitAnswers');
 const submitVotesHandler = require('./submitVotes');
 const disconnectHandler = require('./disconnect');
 
-// --- YARDIMCI FONKSİYONLAR (Helper Functions) ---
-// These functions are defined here as they are shared across multiple handlers
-// and manage the core game state transitions.
+// --- YARDIMCI FONKSİYONLAR ---
+// Bu fonksiyonlar, çekirdek oyun durumu geçişlerini yönetir ve tüm handler'lar tarafından paylaşılır.
 
 function startNewRound(io, rooms, roomCode) {
     const room = rooms[roomCode];
@@ -21,17 +20,16 @@ function startNewRound(io, rooms, roomCode) {
     room.gameStarted = true;
     room.votingStarted = false;
     room.submissions = {};
-    room.votes = {}; // Ensure votes are cleared for the new round
-    room.playerVotes = {}; // Ensure playerVotes (referee's vote status) is cleared for the new round
-    room.finalCountdownStarted = false;
+    room.votes = {}; // Yeni tur için oyları temizle
+    room.playerVotes = {}; // Yeni tur için hakemin oy durumu bilgisini temizle
+    room.finalCountdownStarted = false; // Yeni tur için final geri sayım durumunu sıfırla
 
     const allowedLetters = "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ";
     const randomLetter = allowedLetters[Math.floor(Math.random() * allowedLetters.length)];
     room.currentLetter = randomLetter;
 
-    const DURATION = 300; // 5 dakika (answer submission phase)
+    const DURATION = 300; // Cevap gönderme aşamasının süresi (5 dakika)
     
-    // Log for debugging
     console.log(`Oda: ${roomCode}, Tur: ${room.currentRound}/${room.totalRounds} başlatıldı. Harf: ${randomLetter}`);
     
     io.to(roomCode).emit('gameStarted', {
@@ -40,11 +38,11 @@ function startNewRound(io, rooms, roomCode) {
         categories: room.categories.map(c => c.charAt(0).toUpperCase() + c.slice(1)),
         currentRound: room.currentRound,
         totalRounds: room.totalRounds,
-        players: room.players // Send updated player list (with isReferee flag)
+        players: room.players, // Güncel oyuncu listesini (isReferee bayraklı) gönder
+        refereeId: room.refereeId // Hakem ID'sini gönder
     });
 
-    // Set a timeout for the answer submission phase.
-    // When time runs out, automatically move to voting phase.
+    // Cevap gönderme aşaması için zamanlayıcıyı ayarla. Süre bitince otomatik olarak oylama aşamasına geç.
     room.timerId = setTimeout(() => {
         console.log(`Oda ${roomCode} için tur süresi doldu. Oylama aşaması başlatılıyor.`);
         startVotingPhase(io, rooms, roomCode);
@@ -58,24 +56,24 @@ function startVotingPhase(io, rooms, roomCode) {
         return;
     }
 
-    room.gameStarted = false; // Game submission phase is over
-    room.votingStarted = true; // Voting phase begins
+    room.gameStarted = false; // Cevap gönderme aşaması bitti
+    room.votingStarted = true; // Oylama aşaması başladı
 
     console.log(`Oda ${roomCode} için oylama aşaması başladı (Hakem Oyu bekleniyor).`);
     
-    // Emit votingStarted event with necessary data for clients
+    // Client'lara oylama aşaması bilgisini gönder
     io.to(roomCode).emit('votingStarted', {
-        submissions: room.submissions, // All submitted answers
-        players: room.players, // All players (including referee status)
-        refereeId: room.refereeId // ID of the referee
+        submissions: room.submissions, // Gönderilen tüm cevaplar
+        players: room.players, // Tüm oyuncular (hakem durumu dahil)
+        refereeId: room.refereeId // Hakemin ID'si
     });
 
-    // Set a timeout for the voting phase in case the referee doesn't vote manually.
-    const VOTING_DURATION = 60; // Referee has 60 seconds to vote
+    // Hakemin oy kullanmaması durumunda oylama aşaması için zamanlayıcı ayarla.
+    const VOTING_DURATION = 60; // Hakem'in oy kullanması için 60 saniye
     room.timerId = setTimeout(() => {
         console.log(`Oda ${roomCode} için hakem oylama süresi doldu. Skor hesaplanıyor.`);
-        // If the referee didn't submit votes, 'room.votes' might be empty.
-        // calculateFinalScores must handle this gracefully (e.g., all answers get 0 points)
+        // Hakem manuel olarak oy göndermediyse 'room.votes' boş olabilir.
+        // calculateFinalScores'ın bunu zarifçe işlemesi gerekir (örn. tüm cevaplar 0 puan alır).
         calculateFinalScores(io, rooms, roomCode);
     }, VOTING_DURATION * 1000);
 }
@@ -87,34 +85,33 @@ function calculateFinalScores(io, rooms, roomCode) {
         return;
     }
 
-    room.votingStarted = false; // Voting is definitely over
+    room.votingStarted = false; // Oylama kesinlikle bitti
     const { players, submissions, votes, currentLetter, categories, refereeId } = room;
     const roundResults = {};
-    const validAnswers = {}; // Answers deemed valid by the referee
+    const validAnswers = {}; // Hakem tarafından geçerli kabul edilen cevaplar
 
-    // Iterate through the referee's votes (which are stored in room.votes)
-    // The `submitVotes` handler now ensures `room.votes` contains only the referee's decisions.
+    // Hakemin oyları üzerinde döngü yap (room.votes içinde sadece hakemin kararları bulunur)
     Object.keys(votes).forEach(answer => {
         const answerVotes = votes[answer];
-        // If the referee approved the answer (approve count is 1)
+        // Eğer hakem cevabı onayladıysa (approve sayısı 1'den büyükse)
         if (answerVotes.approve > 0) {
             validAnswers[answer] = true;
         }
     });
 
-    // Calculate scores for each player
+    // Her oyuncunun puanlarını hesapla
     players.forEach(player => {
         const playerAnswers = submissions[player.id] || {};
         let roundScore = 0;
         const scoresByCategory = {};
 
-        // Determine unique/shared answers for point calculation
+        // Tüm oyuncular arasındaki benzersiz/paylaşılan cevapları belirle (puan hesaplaması için)
         const answersCountPerCategory = {};
         categories.forEach(category => {
             const tempCategoryAnswers = {};
             players.forEach(p => {
                 const ans = (submissions[p.id]?.[category] || "").trim().toLowerCase();
-                if (ans && validAnswers[ans]) { // Only count if valid by referee
+                if (ans && validAnswers[ans]) { // Sadece hakem tarafından geçerli kabul edildiyse say
                     tempCategoryAnswers[ans] = (tempCategoryAnswers[ans] || 0) + 1;
                 }
             });
@@ -125,16 +122,16 @@ function calculateFinalScores(io, rooms, roomCode) {
             const playerAnswer = (playerAnswers[category] || "").trim().toLowerCase();
             let points = 0;
 
-            // Check if the answer starts with the correct letter AND is deemed valid by the referee
+            // Cevabın doğru harfle başlayıp başlamadığını VE hakem tarafından geçerli kabul edilip edilmediğini kontrol et
             if (playerAnswer.startsWith(currentLetter.toLowerCase()) && validAnswers[playerAnswer]) {
                 const countInThisCategory = answersCountPerCategory[category]?.[playerAnswer] || 0;
                 if (countInThisCategory === 1) {
-                    points = 15; // Unique & Valid by referee
+                    points = 15; // Benzersiz ve Hakem tarafından geçerli
                 } else if (countInThisCategory > 1) {
-                    points = 10; // Shared & Valid by referee
+                    points = 10; // Paylaşılan ve Hakem tarafından geçerli
                 }
             } else {
-                // If the answer does not start with the current letter, or it was rejected/not voted by the referee, it gets 0 points.
+                // Cevap doğru harfle başlamıyorsa VEYA hakem tarafından reddedildiyse/oylanmadıysa 0 puan.
                 points = 0;
             }
             scoresByCategory[category] = points;
@@ -146,46 +143,39 @@ function calculateFinalScores(io, rooms, roomCode) {
             username: player.username,
             roundScore: roundScore,
             totalScore: room.playerScores[player.id],
-            scores: scoresByCategory, // Score per category for this player
-            answers: playerAnswers // Player's submitted answers
+            scores: scoresByCategory, // Oyuncunun kategori başına puanı
+            answers: playerAnswers // Oyuncunun gönderdiği cevaplar
         };
     });
 
-    // Emit 'roundOver' event with the calculated results to all clients in the room
+    // 'roundOver' olayını hesaplanan sonuçlarla odadaki tüm client'lara gönder
     console.log(`Oda: ${roomCode}, Tur: ${room.currentRound} bitti. Sonuçlar gönderiliyor.`);
     io.to(roomCode).emit('roundOver', Object.values(roundResults));
 
-    // Check if the game has finished all rounds or if a new round should start
+    // Oyun tüm turları tamamladıysa veya yeni bir tur başlamalıysa kontrol et
     if (room.currentRound >= room.totalRounds) {
         console.log(`Oda: ${roomCode}, Oyun bitti. Final sonuçlar gönderiliyor.`);
         io.to(roomCode).emit('gameOver', Object.values(roundResults).sort((a,b) => b.totalScore - a.totalScore));
-        delete rooms[roomCode]; // Remove the room from active rooms
+        delete rooms[roomCode]; // Odayı aktif odalardan sil
     } else {
-        // Start a new round after a short delay
+        // Kısa bir gecikmeden sonra yeni turu başlat
         console.log(`Oda: ${roomCode}, Yeni tur 10 saniye içinde başlıyor.`);
         setTimeout(() => startNewRound(io, rooms, roomCode), 10000);
     }
 }
 
-// --- SOCKET OLAYLARI (Event Handlers Registration) ---
-// This module exports a function that takes the `io` instance and `rooms` object
-// and registers all individual socket handlers.
+// --- SOCKET OLAYLARI ---
+// Bu modül, 'io' örneğini ve 'rooms' objesini alır ve tüm bireysel soket handler'larını kaydeder.
 module.exports = (io, rooms) => {
     io.on('connection', (socket) => {
         console.log(`Yeni bir kullanıcı bağlandı: ${socket.id}`);
 
-        // Register individual socket handlers, passing necessary dependencies
-        // Helper functions (startNewRound, etc.) are passed if they need to be called
-        // from within these handlers.
+        // Bireysel soket handler'larını kaydet, gerekli bağımlılıkları geçirerek
         createRoomHandler(socket, io, rooms);
         joinRoomHandler(socket, io, rooms);
-        // startGameHandler needs startNewRound to initiate the game
         startGameHandler(socket, io, rooms, startNewRound);
-        // submitAnswersHandler needs startVotingPhase to transition after all answers
         submitAnswersHandler(socket, io, rooms, startVotingPhase);
-        // submitVotesHandler needs calculateFinalScores to finalize the round after referee vote
         submitVotesHandler(socket, io, rooms, calculateFinalScores);
-        // disconnectHandler needs helper functions to adjust game state if players leave
         disconnectHandler(socket, io, rooms, startVotingPhase, calculateFinalScores);
     });
 };
