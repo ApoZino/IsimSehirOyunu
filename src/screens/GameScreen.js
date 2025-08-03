@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { socket } from '../services/socket';
 
 const GameScreen = ({ route, navigation }) => {
@@ -51,28 +51,33 @@ const GameScreen = ({ route, navigation }) => {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.roundInfo}>Tur: {currentRound} / {totalRounds}</Text>
-      <Text style={styles.timer}>Kalan Süre: {formatTime(timeLeft)}</Text>
-      {isFinalCountdown && ( <Text style={styles.warningText}>Bir oyuncu bitirdi! Son 15 saniye!</Text> )}
-      <Text style={styles.header}>Seçilen Harf:</Text>
-      <Text style={styles.letterText}>{letter}</Text>
-      
-      {categories.map((category) => (
-        <TextInput
-          key={category}
-          style={styles.input}
-          placeholder={category}
-          placeholderTextColor="black" // <-- YENİ EKLENEN SATIR
-          onChangeText={text => handleInputChange(category, text)}
-          autoCapitalize="words"
-        />
-      ))}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+    >
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.roundInfo}>Tur: {currentRound} / {totalRounds}</Text>
+        <Text style={styles.timer}>Kalan Süre: {formatTime(timeLeft)}</Text>
+        {isFinalCountdown && ( <Text style={styles.warningText}>Bir oyuncu bitirdi! Son 15 saniye!</Text> )}
+        <Text style={styles.header}>Seçilen Harf:</Text>
+        <Text style={styles.letterText}>{letter}</Text>
+        
+        {categories.map((category) => (
+          <TextInput
+            key={category}
+            style={styles.input}
+            placeholder={category}
+            placeholderTextColor="black"
+            onChangeText={text => handleInputChange(category, text)}
+            autoCapitalize="words"
+          />
+        ))}
 
-      <View style={styles.buttonContainer}>
-        <Button title={submitted ? "Diğer Oyuncular Bekleniyor..." : "Cevapları Gönder"} onPress={handleSubmitAnswers} disabled={timeLeft === 0 || submitted} />
-      </View>
-    </ScrollView>
+        <View style={styles.buttonContainer}>
+          <Button title={submitted ? "Diğer Oyuncular Bekleniyor..." : "Cevapları Gönder"} onPress={handleSubmitAnswers} disabled={timeLeft === 0 || submitted} />
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -91,7 +96,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     fontSize: 16,
     marginBottom: 10,
-    color: 'black', // <-- YAZILAN YAZININ RENGİNİ SİYAH YAPAR
+    color: 'black',
   },
   buttonContainer: { 
     marginTop: 10,
