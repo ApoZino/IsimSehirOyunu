@@ -74,7 +74,7 @@ const GameScreen = ({ route, navigation }) => {
         ))}
 
         <View style={styles.buttonContainer}>
-          <Button title={submitted ? "Diğer Oyuncular Bekleniyor..." : "Cevapları Gönder"} onPress={handleSubmitAnswers} disabled={timeLeft === 0 || submitted} />
+          <Button title={submitted ? "Diğer Oyuncular Bekleniyor..." : "Cevapları Gönder"} onPress={handleSubmitAnswers} disabled={timeLeft === 15 || submitted} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
