@@ -85,80 +85,96 @@ function calculateFinalScores(io, rooms, roomCode) {
         return;
     }
 
-    room.votingStarted = false; // Oylama kesinlikle bitti
+    room.votingStarted = false; 
     const { players, submissions, votes, currentLetter, categories, refereeId } = room;
-    const roundResults = {};
-    const validAnswers = {}; // Hakem tarafından geçerli kabul edilen cevaplar
+    const roundResults = {}; 
+    const validAnswers = {}; 
 
-    // Hakemin oyları üzerinde döngü yap (room.votes içinde sadece hakemin kararları bulunur)
+    // Yeni eklenen detaylı loglar:
+    console.log(`calculateFinalScores [${roomCode}]: Girdi verileri - CurrentLetter: ${currentLetter}, Categories: ${JSON.stringify(categories)}`);
+    console.log(`calculateFinalScores [${roomCode}]: Başlangıç oyuncu listesi: ${JSON.stringify(players.map(p => ({id: p.id, username: p.username})), null, 2)}`);
+    console.log(`calculateFinalScores [${roomCode}]: Toplanan cevaplar (submissions): ${JSON.stringify(submissions, null, 2)}`);
+    console.log(`calculateFinalScores [${roomCode}]: Toplanan oylar (votes): ${JSON.stringify(votes, null, 2)}`);
+
+
     Object.keys(votes).forEach(answer => {
         const answerVotes = votes[answer];
-        // Eğer hakem cevabı onayladıysa (approve sayısı 1'den büyükse)
         if (answerVotes.approve > 0) {
             validAnswers[answer] = true;
         }
     });
+    console.log(`calculateFinalScores [${roomCode}]: Hakem tarafından geçerli bulunan cevaplar (validAnswers): ${JSON.stringify(validAnswers, null, 2)}`);
 
-    // Her oyuncunun puanlarını hesapla
+    console.log(`calculateFinalScores [${roomCode}]: Oyuncu skorları hesaplanmaya başlanıyor. Toplam oyuncu: ${players.length}`);
+    
     players.forEach(player => {
-        const playerAnswers = submissions[player.id] || {};
+        console.log(`calculateFinalScores [${roomCode}]: Oyuncu ${player.username} (${player.id}) için skor hesaplanıyor.`);
+        const playerAnswers = submissions[player.id] || {}; // Oyuncunun cevapları, yoksa boş obje
+        console.log(`calculateFinalScores [${roomCode}]:   - Oyuncu cevapları (playerAnswers): ${JSON.stringify(playerAnswers)}`);
+
         let roundScore = 0;
         const scoresByCategory = {};
 
-        // Tüm oyuncular arasındaki benzersiz/paylaşılan cevapları belirle (puan hesaplaması için)
         const answersCountPerCategory = {};
         categories.forEach(category => {
             const tempCategoryAnswers = {};
+            // Sadece referee tarafından geçerli bulunan cevapları say
             players.forEach(p => {
                 const ans = (submissions[p.id]?.[category] || "").trim().toLowerCase();
-                if (ans && validAnswers[ans]) { // Sadece hakem tarafından geçerli kabul edildiyse say
+                if (ans && validAnswers[ans]) { 
                     tempCategoryAnswers[ans] = (tempCategoryAnswers[ans] || 0) + 1;
                 }
             });
             answersCountPerCategory[category] = tempCategoryAnswers;
         });
+        console.log(`calculateFinalScores [${roomCode}]:   - Kategori bazında cevap sayıları (answersCountPerCategory): ${JSON.stringify(answersCountPerCategory)}`);
+
 
         categories.forEach(category => {
             const playerAnswer = (playerAnswers[category] || "").trim().toLowerCase();
             let points = 0;
 
-            // Cevabın doğru harfle başlayıp başlamadığını VE hakem tarafından geçerli kabul edilip edilmediğini kontrol et
             if (playerAnswer.startsWith(currentLetter.toLowerCase()) && validAnswers[playerAnswer]) {
                 const countInThisCategory = answersCountPerCategory[category]?.[playerAnswer] || 0;
                 if (countInThisCategory === 1) {
-                    points = 15; // Benzersiz ve Hakem tarafından geçerli
+                    points = 15; 
                 } else if (countInThisCategory > 1) {
-                    points = 10; // Paylaşılan ve Hakem tarafından geçerli
+                    points = 10; 
                 }
             } else {
-                // Cevap doğru harfle başlamıyorsa VEYA hakem tarafından reddedildiyse/oylanmadıysa 0 puan.
-                points = 0;
+                points = 0; // Cevap doğru harfle başlamıyorsa VEYA hakem reddettiyse/oylamadıysa 0 puan.
             }
             scoresByCategory[category] = points;
             roundScore += points;
         });
+        console.log(`calculateFinalScores [${roomCode}]:   - Oyuncu ${player.username} için kategori skorları: ${JSON.stringify(scoresByCategory)}`);
+        console.log(`calculateFinalScores [${roomCode}]:   - Oyuncu ${player.username} için tur puanı (roundScore): ${roundScore}`);
 
-        room.playerScores[player.id] += roundScore;
+
+        // room.playerScores[player.id] değerinin başlangıçta undefined olmaması için kontrol
+        room.playerScores[player.id] = (room.playerScores[player.id] || 0) + roundScore;
         roundResults[player.id] = {
             username: player.username,
             roundScore: roundScore,
             totalScore: room.playerScores[player.id],
-            scores: scoresByCategory, // Oyuncunun kategori başına puanı
-            answers: playerAnswers // Oyuncunun gönderdiği cevaplar
+            scores: scoresByCategory,
+            answers: playerAnswers
         };
+        console.log(`calculateFinalScores [${roomCode}]:   - Oyuncu ${player.username} için güncel toplam skor: ${room.playerScores[player.id]}`);
     });
 
-    // 'roundOver' olayını hesaplanan sonuçlarla odadaki tüm client'lara gönder
-    console.log(`Oda: ${roomCode}, Tur: ${room.currentRound} bitti. Sonuçlar gönderiliyor.`);
-    io.to(roomCode).emit('roundOver', Object.values(roundResults));
+    // --- KRİTİK LOG: roundResults'ın içeriğini gönderilmeden önce logla ---
+    const finalRoundResultsArray = Object.values(roundResults); // Objeyi diziye çevir
+    console.log(`calculateFinalScores [${roomCode}]: Hesaplanan tur sonuçları (finalRoundResultsArray): ${JSON.stringify(finalRoundResultsArray, null, 2)}`);
 
-    // Oyun tüm turları tamamladıysa veya yeni bir tur başlamalıysa kontrol et
+    io.to(roomCode).emit('roundOver', finalRoundResultsArray); // Dizi olarak gönder
+    console.log(`Oda: ${roomCode}, Tur: ${room.currentRound} bitti. Sonuçlar gönderiliyor.`);
+
     if (room.currentRound >= room.totalRounds) {
         console.log(`Oda: ${roomCode}, Oyun bitti. Final sonuçlar gönderiliyor.`);
-        io.to(roomCode).emit('gameOver', Object.values(roundResults).sort((a,b) => b.totalScore - a.totalScore));
-        delete rooms[roomCode]; // Odayı aktif odalardan sil
+        io.to(roomCode).emit('gameOver', finalRoundResultsArray.sort((a,b) => b.totalScore - a.totalScore));
+        delete rooms[roomCode];
     } else {
-        // Kısa bir gecikmeden sonra yeni turu başlat
         console.log(`Oda: ${roomCode}, Yeni tur 10 saniye içinde başlıyor.`);
         setTimeout(() => startNewRound(io, rooms, roomCode), 10000);
     }

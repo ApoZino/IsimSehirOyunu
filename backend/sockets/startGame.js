@@ -14,8 +14,11 @@ module.exports = (socket, io, rooms, startNewRound) => {
             // Tüm oyuncuların skorlarını sıfırla
             Object.keys(room.playerScores).forEach(playerId => { room.playerScores[playerId] = 0; });
             
-            console.log(`Oda ${roomCode} için oyun başlatıldı. Tur sayısı: ${room.totalRounds}, Kategoriler: ${JSON.stringify(room.categories)}`);
-            startNewRound(io, rooms, roomCode); // Yardımcı fonksiyonu çağır
+            console.log(`Oda ${roomCode} için oyun başlatıldı. Tur sayısı: ${room.totalRounds}, Kategoriler: ${JSON.stringify(room.categories)}. startNewRound çağırılıyor.`);
+            
+            // Call startNewRound which will emit 'gameStarted' to the whole room
+            startNewRound(io, rooms, roomCode); 
+
         } else {
             socket.emit('error', { message: 'Sadece odanın kurucusu oyunu başlatabilir veya oda bulunamadı.' });
         }

@@ -10,34 +10,36 @@ const ScoreScreen = ({ route }) => {
 
     // Sunucudan yeni tur başlama veya oyun bitme olaylarını dinle
     useEffect(() => {
+        // Yeni tur başlama olayı geldiğinde GameScreen'e yönlendir
         const onGameStarted = (data) => {
             console.log("ScoreScreen: Yeni tur başladı, Game ekranına yönlendiriliyor:", JSON.stringify(data, null, 2));
+            // KRİTİK DÜZELTME: 'data' objesini 'initialGameData' olarak GameScreen'e ilet
             navigation.replace('Game', {
-                letter: data.letter,
-                roomCode: roomCode,
-                duration: data.duration,
-                categories: data.categories,
-                currentRound: data.currentRound,
-                totalRounds: data.totalRounds,
-                refereeId: data.refereeId // Hakem ID'sini GameScreen'e ilet
+                roomCode: roomCode, 
+                initialGameData: data // <-- BURADA DÜZELTİLDİ: 'data' içeriği artık 'initialGameData' altında
             });
         };
 
-        const onGameOver = (data) => { // 'finalResults' yerine 'data' kullandım çünkü server'dan genel data objesi geliyor.
+        // Oyun bittiğinde GameOver ekranına yönlendir
+        const onGameOver = (data) => { 
             console.log("ScoreScreen: Oyun bitti, GameOver ekranına yönlendiriliyor:", JSON.stringify(data, null, 2));
             navigation.replace('GameOver', { finalResults: data }); // `finalResults` olarak iletiyoruz
         };
 
+        // Genel hata dinleyicisi
         const onError = (error) => {
             console.error("ScoreScreen'de Sunucu Hatası:", error.message || error);
             Alert.alert("Hata", error.message || "Bir hata oluştu.");
         };
 
+        // Socket olaylarını dinlemeye başla
         socket.on('gameStarted', onGameStarted);
         socket.on('gameOver', onGameOver);
         socket.on('error', onError);
 
+        // Component unmount olduğunda veya effect tekrar çalıştığında dinleyicileri temizle
         return () => {
+            console.log("ScoreScreen: Socket dinleyicileri temizleniyor (cleanup).");
             socket.off('gameStarted', onGameStarted);
             socket.off('gameOver', onGameOver);
             socket.off('error', onError);
@@ -48,6 +50,7 @@ const ScoreScreen = ({ route }) => {
     // `finalResults` bir dizi olmalı, her elemanı bir oyuncunun tur sonuçları olmalı.
     const sortedResults = Array.isArray(finalResults) ? finalResults.sort((a, b) => b.totalScore - a.totalScore) : [];
 
+    // Eğer sonuç yoksa veya geçersizse özel bir mesaj göster
     if (!Array.isArray(finalResults) || finalResults.length === 0) {
         return (
             <View style={styles.container}>

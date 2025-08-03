@@ -3,20 +3,29 @@ import { View, Text, TextInput, Button, StyleSheet, ScrollView, KeyboardAvoiding
 import { socket } from '../services/socket';
 
 const GameScreen = ({ route, navigation }) => {
-  // `refereeId`'yi de route.params'tan alıyoruz, GameScreen'den VotingScreen'e iletilecek
-  const { letter, roomCode, duration, categories, currentRound, totalRounds, refereeId } = route.params;
+  // `initialGameData`'yı route.params'tan alıyoruz (LobbyScreen'den gönderildiği gibi)
+  const { roomCode, initialGameData } = route.params;
 
-  const [answers, setAnswers] = useState({});
-  const [timeLeft, setTimeLeft] = useState(duration || 300); // Tur süresi veya 300 saniye
-  const [isFinalCountdown, setIsFinalCountdown] = useState(false); // 15 saniyelik geri sayım aktif mi?
-  const [submitted, setSubmitted] = useState(false); // Oyuncu cevaplarını gönderdi mi?
-  const [isGameLoading, setIsGameLoading] = useState(true); // Başlangıçta true, oyun verisi gelince false olur
+  // Oyunun detaylarını `initialGameData`'dan başlatıyoruz
+  const [letter, setLetter] = useState(initialGameData?.letter || '');
+  const [categories, setCategories] = useState(initialGameData?.categories || []);
+  const [currentRound, setCurrentRound] = useState(initialGameData?.currentRound || 0);
+  const [totalRounds, setTotalRounds] = useState(initialGameData?.totalRounds || 0);
+  const [refereeId, setRefereeId] = useState(initialGameData?.refereeId || '');
   
+  const [answers, setAnswers] = useState({});
+  const [timeLeft, setTimeLeft] = useState(initialGameData?.duration || 300); // Süreyi initialGameData'dan al
+  const [isFinalCountdown, setIsFinalCountdown] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  
+  // isGameLoading başlangıçta hala true ama hemen aşağıda initialGameData kontrolü ile false yapılacak
+  const [isGameLoading, setIsGameLoading] = useState(true); 
+
   const timerIntervalRef = useRef(null); // Zamanlayıcı ID'sini tutmak için useRef
 
   // --- Zamanlayıcı Mantığı ---
   useEffect(() => {
-    // Mevcut bir zamanlayıcı varsa temizle (her zaman effect çalıştığında temiz başla)
+    // Mevcut bir zamanlayıcı varsa temizle
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
@@ -55,6 +64,7 @@ const GameScreen = ({ route, navigation }) => {
     console.log('GameScreen: Ana Socket Dinleyicileri useEffect çalıştı.');
     console.log(`GameScreen: Şu anki Socket ID: ${socket.id}, Bağlı mı: ${socket.connected}`);
     console.log(`GameScreen: route.params: ${JSON.stringify(route.params, null, 2)}`);
+    console.log(`GameScreen: initialGameData (Lobby'den gelen): ${JSON.stringify(initialGameData, null, 2)}`);
 
     // Bağlantı durumunu kontrol et ve bağlı değilse bağlanmayı dene
     if (!socket.connected) {
@@ -62,29 +72,42 @@ const GameScreen = ({ route, navigation }) => {
         socket.connect(); // Bağlantıyı zorla
     }
 
-    // Bağlantı durumundaki değişiklikleri izlemek için dinleyici (debug amaçlı)
-    const onConnectDebug = () => {
-        console.log('GameScreen: Socket yeniden BAĞLANDI (onConnectDebug)!');
-    };
+    // --- KRİTİK DEĞİŞİKLİK BURADA BAŞLIYOR ---
+    // Eğer initialGameData mevcutsa, ekranı doğrudan bununla başlat
+    if (initialGameData && initialGameData.currentRound > 0) { // currentRound 0'dan büyükse geçerli data demektir
+        console.log('GameScreen: initialGameData ile doğrudan başlatılıyor. isGameLoading FALSE yapılıyor.');
+        // State'ler zaten yukarıda initialGameData ile başlatıldı.
+        setIsGameLoading(false); // Yükleme durumunu kapat
+    } else {
+        console.log('GameScreen: initialGameData eksik veya geçersiz. isGameLoading TRUE kalıyor (Event bekleniyor).');
+        setIsGameLoading(true); // Veri yoksa yükleme ekranında kal
+    }
+    // --- KRİTİK DEĞİŞİKLİK BURADA BİTİYOR ---
+
+
+    const onConnectDebug = () => { console.log('GameScreen: Socket yeniden BAĞLANDI (onConnectDebug)!'); };
     const onDisconnectDebug = () => {
         console.log('GameScreen: Socket bağlantısı KESİLDİ (onDisconnectDebug)!');
         Alert.alert('Bağlantı Hatası', 'Sunucu bağlantısı GameScreen\'de kesildi. Lobiye dönüyor.');
-        navigation.replace('Home'); // Bağlantı kesilirse ana ekrana dön
+        navigation.replace('Home');
     };
 
-    socket.on('connect', onConnectDebug);
-    socket.on('disconnect', onDisconnectDebug);
-
-    // Bu fonksiyonu burada tanımlıyoruz çünkü useEffect içinde kalıcı olarak bağlı kalacak.
-    const handleGameStartedOnMount = (data) => {
+    // onGameStarted olayını yakalamaya devam et (özellikle sonraki turlar için)
+    const handleGameStartedEvent = (data) => {
       console.log('GameScreen: >>>>> ONGAMESTARTED OLAYI ALINDI! <<<<< Veri:', JSON.stringify(data, null, 2));
-      // Resetleme işlemleri
+      // State'leri olaydan gelen data ile güncelle
+      setLetter(data.letter);
+      setCategories(data.categories);
+      setCurrentRound(data.currentRound);
+      setTotalRounds(data.totalRounds);
+      setRefereeId(data.refereeId); 
       setTimeLeft(data.duration);
+      
       setAnswers({});
       setIsFinalCountdown(false);
       setSubmitted(false);
-      setIsGameLoading(false); // Yüklemeyi bitir, oyunu göster
-      console.log('GameScreen: isGameLoading FALSE olarak ayarlandı, oyun başlamalı.');
+      setIsGameLoading(false); // Yükleme durumunu kapat
+      console.log('GameScreen: isGameLoading FALSE olarak ayarlandı, oyun başlamalı (olay sonrası).');
     };
 
     const onRoundOver = (results) => {
@@ -122,30 +145,31 @@ const GameScreen = ({ route, navigation }) => {
     };
 
     // Socket olaylarını dinlemeye başla
-    socket.on('gameStarted', handleGameStartedOnMount);
+    socket.on('connect', onConnectDebug);
+    socket.on('disconnect', onDisconnectDebug);
+    socket.on('gameStarted', handleGameStartedEvent); // Bu listener çok önemli!
     socket.on('roundOver', onRoundOver);
     socket.on('finalCountdown', onFinalCountdown);
     socket.on('votingStarted', onVotingStarted);
     socket.on('playerJoined', onPlayerJoined);
     socket.on('error', onError);
 
-    // Temizlik fonksiyonu: Component unmount olduğunda veya useEffect tekrar çalıştığında dinleyicileri kaldır.
+    // Temizlik fonksiyonu
     return () => {
       console.log('GameScreen: Socket dinleyicileri temizleniyor (cleanup).');
-      socket.off('gameStarted', handleGameStartedOnMount);
+      socket.off('connect', onConnectDebug);
+      socket.off('disconnect', onDisconnectDebug);
+      socket.off('gameStarted', handleGameStartedEvent);
       socket.off('roundOver', onRoundOver);
       socket.off('finalCountdown', onFinalCountdown);
       socket.off('votingStarted', onVotingStarted);
       socket.off('playerJoined', onPlayerJoined);
       socket.off('error', onError);
-      // Debug dinleyicileri de temizle
-      socket.off('connect', onConnectDebug);
-      socket.off('disconnect', onDisconnectDebug);
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
     };
-  }, [navigation, roomCode, refereeId]); // Bağımlılıklar: `route.params`'tan gelenler
+  }, [navigation, roomCode, initialGameData]); // `initialGameData` bağımlılıklara eklendi
 
   const handleInputChange = (category, value) => {
     setAnswers(prev => ({ ...prev, [category.toLowerCase()]: value }));

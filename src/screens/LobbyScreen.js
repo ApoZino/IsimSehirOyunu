@@ -1,13 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, StyleSheet, FlatList, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, Button, StyleSheet, FlatList, Alert, ActivityIndicator, TextInput, ScrollView, TouchableOpacity } from 'react-native';
 import { socket } from '../services/socket';
+
+// Önerilen Kategoriler Listesi
+const PREDEFINED_CATEGORIES = [
+    'İsim', 'Şehir', 'Hayvan', 'Bitki', 'Eşya', // Klasik
+    'Ülke', 'Sanatçı', 'Marka', 'Film/Dizi', 'Yemek', 'Meslek' // Ekstra
+];
 
 const LobbyScreen = ({ route, navigation }) => {
     const { roomCode, players: initialPlayers, username, refereeId: initialRefereeId } = route.params;
 
     const [players, setPlayers] = useState(initialPlayers);
     const [refereeId, setRefereeId] = useState(initialRefereeId);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(false); // Oyunu başlatma yükleme durumu
+
+    // Başlangıçta klasik kategoriler seçili olsun
+    const [selectedCategories, setSelectedCategories] = useState(['İsim', 'Şehir', 'Hayvan', 'Bitki', 'Eşya']);
+    const [numRounds, setNumRounds] = useState('5'); // Tur sayısı, TextInput için string olarak
 
     // Odanın kurucusu (host) bu client mı? (Oyunu başlatma yetkisi için)
     const isHost = players[0]?.id === socket.id;
@@ -21,16 +31,11 @@ const LobbyScreen = ({ route, navigation }) => {
         const onPlayerJoined = (updatedPlayers) => {
             console.log('LobbyScreen: Oyuncu katıldı, güncel oyuncular:', JSON.stringify(updatedPlayers, null, 2));
             setPlayers(updatedPlayers);
-            // Hakem bilgisi güncellenebilir eğer dynamic hakem seçimi varsa.
-            // Şu anki senaryoda hakem sabit (oda kurucusu) olduğu için değişmez.
         };
 
         const onPlayerLeft = (updatedPlayers) => {
             console.log('LobbyScreen: Oyuncu ayrıldı, güncel oyuncular:', JSON.stringify(updatedPlayers, null, 2));
             setPlayers(updatedPlayers);
-            // Eğer hakem ayrılırsa, yeni hakem atanmalı veya oyun iptal edilmeli.
-            // Mevcut server logic'te hakem ayrılırsa oyun bitiyor/ilerliyor.
-            // Lobiye geri dönme mantığı eklenebilir eğer tüm oyuncular ayrılırsa.
             if (updatedPlayers.length === 0) {
                 Alert.alert("Oda Boşaldı", "Tüm oyuncular ayrıldı, lobiye dönülüyor.");
                 navigation.replace('Home');
@@ -38,18 +43,15 @@ const LobbyScreen = ({ route, navigation }) => {
         };
 
         const onGameStarted = (data) => {
-            console.log('LobbyScreen: Oyun başladı, Game ekranına yönlendiriliyor:', JSON.stringify(data, null, 2));
-            setIsLoading(false);
-            navigation.replace('Game', {
-                letter: data.letter,
-                roomCode: roomCode,
-                duration: data.duration,
-                categories: data.categories,
-                currentRound: data.currentRound,
-                totalRounds: data.totalRounds,
-                refereeId: data.refereeId // Hakem ID'sini GameScreen'e ilet
+            console.log('LobbyScreen: >>> Received gameStarted event, preparing to navigate to GameScreen... <<<', JSON.stringify(data, null, 2));
+            setIsLoading(false); // Yükleme animasyonunu durdur
+
+            navigation.replace('Game', { 
+                roomCode: roomCode, 
+                initialGameData: data // GameScreen'e initial game state'i doğru adla gönderiliyor
             });
         };
+
 
         const onError = (error) => {
             console.error("LobbyScreen'de Sunucu Hatası:", error.message || error);
@@ -59,7 +61,7 @@ const LobbyScreen = ({ route, navigation }) => {
 
         socket.on('playerJoined', onPlayerJoined);
         socket.on('playerLeft', onPlayerLeft);
-        socket.on('gameStarted', onGameStarted);
+        socket.on('gameStarted', onGameStarted); // 'gameStarted' olayını dinlemeye devam et
         socket.on('error', onError);
 
         // Temizlik fonksiyonu
@@ -70,20 +72,39 @@ const LobbyScreen = ({ route, navigation }) => {
             socket.off('gameStarted', onGameStarted);
             socket.off('error', onError);
         };
-    }, [navigation, roomCode]);
+    }, [navigation, roomCode]); 
 
     const handleStartGame = () => {
         if (players.length < 1) { // Min oyuncu sayısı kontrolü, 1 test için yeterli
             Alert.alert("Hata", "Oyunu başlatmak için en az 1 oyuncu olmalı.");
             return;
         }
+        if (selectedCategories.length === 0) { // Seçili kategori yoksa
+            Alert.alert("Hata", "Lütfen en az bir kategori seçin.");
+            return;
+        }
+        const parsedRounds = parseInt(numRounds, 10);
+        if (isNaN(parsedRounds) || parsedRounds <= 0) {
+            Alert.alert("Hata", "Geçerli bir tur sayısı girin (örn: 5).");
+            return;
+        }
+
         setIsLoading(true);
         console.log('LobbyScreen: Oyunu başlatma isteği gönderiliyor...');
         socket.emit('startGame', {
             roomCode,
-            categories: ['isim', 'şehir', 'hayvan', 'bitki', 'eşya'], // Varsayılan kategoriler
-            totalRounds: 5 // Varsayılan tur sayısı
+            categories: selectedCategories, // Seçili kategorileri kullan
+            totalRounds: parsedRounds // Parse edilmiş tur sayısını kullan
         });
+    };
+
+    // Kategori seçme/kaldırma
+    const toggleCategory = (category) => {
+        if (selectedCategories.includes(category)) {
+            setSelectedCategories(selectedCategories.filter(cat => cat !== category));
+        } else {
+            setSelectedCategories([...selectedCategories, category]);
+        }
     };
 
     const renderPlayer = ({ item }) => (
@@ -96,14 +117,16 @@ const LobbyScreen = ({ route, navigation }) => {
         </View>
     );
 
-    if (isLoading) {
-        return (
+    // --- KRİTİK KISIM: isLoading kontrolü ve doğru render ---
+    if (isLoading) { // <--- Bu if bloğu doğru yerde ve eksiksiz olmalı
+        return (     // İçindeki return ifadesiyle birlikte
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#007bff" />
                 <Text style={styles.loadingText}>Oyun başlatılıyor...</Text>
             </View>
         );
     }
+    // --- KRİTİK KISIM BİTTİ ---
 
     return (
         <View style={styles.container}>
@@ -116,12 +139,54 @@ const LobbyScreen = ({ route, navigation }) => {
                 style={styles.playerList}
             />
             {isHost && (
-                <Button
-                    title="Oyunu Başlat"
-                    onPress={handleStartGame}
-                    disabled={isLoading}
-                    color="#28a745"
-                />
+                <ScrollView style={styles.hostControlsContainer}>
+                    <Text style={styles.sectionHeader}>Oyun Ayarları:</Text>
+                    
+                    <Text style={styles.settingLabel}>Kategoriler:</Text>
+                    <View style={styles.categoryButtonsContainer}>
+                        {PREDEFINED_CATEGORIES.map(cat => (
+                            <TouchableOpacity
+                                key={cat}
+                                style={[
+                                    styles.categoryButton,
+                                    selectedCategories.includes(cat) && styles.selectedCategoryButton
+                                ]}
+                                onPress={() => toggleCategory(cat)}
+                            >
+                                <Text style={[
+                                    styles.categoryButtonText,
+                                    selectedCategories.includes(cat) && styles.selectedCategoryButtonText
+                                ]}>
+                                    {cat}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                    {selectedCategories.length > 0 && (
+                        <Text style={styles.selectedCategoriesText}>
+                            Seçilenler: {selectedCategories.join(', ')}
+                        </Text>
+                    )}
+                    {/* Eğer manuel kategori ekleme isteniyorsa buraya TextInput eklenebilir */}
+
+
+                    <Text style={styles.settingLabel}>Tur Sayısı:</Text>
+                    <TextInput
+                        style={styles.input}
+                        value={numRounds}
+                        onChangeText={setNumRounds}
+                        keyboardType="numeric"
+                        placeholder="Örn: 5"
+                        placeholderTextColor="gray"
+                    />
+
+                    <Button
+                        title="Oyunu Başlat"
+                        onPress={handleStartGame}
+                        disabled={isLoading}
+                        color="#28a745"
+                    />
+                </ScrollView>
             )}
             {!isHost && (
                 <Text style={styles.waitingHostText}>Oyunun başlaması için hakemi bekliyorsunuz...</Text>
@@ -198,6 +263,71 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#666',
         marginTop: 20,
+        textAlign: 'center',
+    },
+    // Yeni Stil Tanımlamaları
+    hostControlsContainer: {
+        width: '100%',
+        paddingHorizontal: 10,
+        marginBottom: 20,
+        backgroundColor: 'white',
+        borderRadius: 10,
+        paddingVertical: 15,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    sectionHeader: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginBottom: 15,
+        color: '#333',
+        textAlign: 'center',
+    },
+    settingLabel: {
+        fontSize: 16,
+        marginBottom: 5,
+        color: 'black',
+        fontWeight: '500',
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: '#ccc',
+        backgroundColor: '#f9f9f9',
+        padding: 10,
+        borderRadius: 5,
+        fontSize: 16,
+        marginBottom: 15,
+        color: 'black',
+    },
+    categoryButtonsContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        marginBottom: 15,
+    },
+    categoryButton: {
+        backgroundColor: '#e0e0e0',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 20,
+        margin: 5,
+    },
+    selectedCategoryButton: {
+        backgroundColor: '#007bff',
+    },
+    categoryButtonText: {
+        color: 'black',
+        fontSize: 14,
+    },
+    selectedCategoryButtonText: {
+        color: 'white',
+    },
+    selectedCategoriesText: {
+        fontSize: 14,
+        color: '#555',
+        marginBottom: 10,
         textAlign: 'center',
     },
 });
