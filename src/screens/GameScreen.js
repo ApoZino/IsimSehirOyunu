@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react'; // useRef eklendi
-import { View, Text, TextInput, Button, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native'; // Alert eklendi
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, Button, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { socket } from '../services/socket';
 
 const GameScreen = ({ route, navigation }) => {
@@ -10,10 +10,9 @@ const GameScreen = ({ route, navigation }) => {
   const [isFinalCountdown, setIsFinalCountdown] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   
-  // useRef kullanarak zamanlayıcı ID'sini tutmak, re-renderlarda değişmez
-  const timerIntervalRef = useRef(null);
+  const timerIntervalRef = useRef(null); // Zamanlayıcı ID'sini tutmak için useRef
 
-  // --- Zamanlayıcı Mantığı (Oyun Turu) ---
+  // --- Zamanlayıcı Mantığı ---
   useEffect(() => {
     // Mevcut bir zamanlayıcı varsa temizle
     if (timerIntervalRef.current) {
@@ -21,15 +20,13 @@ const GameScreen = ({ route, navigation }) => {
       timerIntervalRef.current = null;
     }
 
-    if (timeLeft > 0) {
-      // Yeni zamanlayıcıyı başlat
+    if (timeLeft > 0 && !submitted) { // Sadece zaman varsa ve cevaplar gönderilmediyse sayacı başlat
       timerIntervalRef.current = setInterval(() => {
         setTimeLeft(prev => {
           if (prev <= 1) {
             clearInterval(timerIntervalRef.current);
             timerIntervalRef.current = null;
-            // Zaman bittiğinde ve henüz cevap gönderilmediyse otomatik gönder
-            if (!submitted) {
+            if (!submitted) { // Zaman bittiğinde ve henüz cevap gönderilmediyse otomatik gönder
               handleSubmitAnswers();
             }
             return 0;
@@ -37,8 +34,7 @@ const GameScreen = ({ route, navigation }) => {
           return prev - 1;
         });
       }, 1000);
-    } else if (timeLeft === 0 && !submitted) {
-        // Zaman 0'a ulaştığında ve cevaplar henüz gönderilmediyse
+    } else if (timeLeft === 0 && !submitted) { // Zaman 0'a ulaştığında ve cevaplar henüz gönderilmediyse
         handleSubmitAnswers();
     }
 
@@ -49,44 +45,42 @@ const GameScreen = ({ route, navigation }) => {
         timerIntervalRef.current = null;
       }
     };
-  }, [duration, submitted]); // 'duration' parametresi değiştiğinde zamanlayıcıyı resetle
+  }, [timeLeft, submitted]); // 'timeLeft' ve 'submitted' state'leri değiştiğinde effecti tekrar çalıştır
 
   // --- Socket Olay Dinleyicileri ---
   useEffect(() => {
     const onRoundOver = (results) => {
-      console.log('Tur Bitti! Sonuçlar:', results);
-      // Zamanlayıcıyı temizle (eğer hala çalışıyorsa)
-      if (timerIntervalRef.current) {
+      // Düzeltildi: objeyi stringify yapıldı
+      console.log('Tur Bitti! Sonuçlar:', JSON.stringify(results, null, 2));
+      if (timerIntervalRef.current) { // Zamanlayıcıyı temizle
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
+      console.log("ScoreScreen'e gönderilen sonuçlar:", JSON.stringify(results, null, 2));
       navigation.replace('Score', { results, roomCode });
     };
 
     const onFinalCountdown = ({ duration: finalDuration }) => {
-      console.log('Son Geri Sayım Başladı! Süre:', finalDuration);
+      // Düzeltildi: objeyi stringify yapıldı (data objesi)
+      console.log('Son Geri Sayım Başladı! Süre:', JSON.stringify({ finalDuration }, null, 2));
       setIsFinalCountdown(true);
-      // Ana zamanlayıcıyı durdur ve son geri sayımı ayarla
-      if (timerIntervalRef.current) {
+      if (timerIntervalRef.current) { // Ana zamanlayıcıyı durdur
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
       setTimeLeft(finalDuration); // Yeni son geri sayım süresi
-      // timeLeft useEffect'i bu yeni süreyi algılayıp yeni bir interval başlatacaktır
     };
 
-    // Oylama başladı olayını dinle (ÖNEMLİ KISIM)
     const onVotingStarted = (data) => {
-      console.log('Oylama başladı! Voting ekranına yönlendiriliyor. Veri:', data);
-      // Zamanlayıcıyı durdur
-      if (timerIntervalRef.current) {
+      // Düzeltildi: objeyi stringify yapıldı
+      console.log('Oylama başladı! Voting ekranına yönlendiriliyor. Veri:', JSON.stringify(data, null, 2));
+      if (timerIntervalRef.current) { // Zamanlayıcıyı durdur
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
       setTimeLeft(0); // Geri sayımı sıfırla/gizle
       
-      // VotingScreen'e yönlendir ve gerekli verileri gönder
-      navigation.replace('Voting', { // <-- 'VotingScreen' yerine 'Voting' kullanıyoruz
+      navigation.replace('Voting', {
         submissions: data.submissions,
         players: data.players,
         roomCode: roomCode
@@ -94,16 +88,17 @@ const GameScreen = ({ route, navigation }) => {
     };
 
     const onError = (error) => {
-        console.error("GameScreen'de Sunucu Hatası:", error);
+        // Düzeltildi: error objesi yerine error.message kullanıldı
+        console.error("GameScreen'de Sunucu Hatası:", error.message || error);
         Alert.alert("Hata", error.message || "Bir hata oluştu.");
     };
 
     socket.on('roundOver', onRoundOver);
     socket.on('finalCountdown', onFinalCountdown);
-    socket.on('votingStarted', onVotingStarted); // Yeni listener
-    socket.on('error', onError); // Genel hata dinleyicisi
+    socket.on('votingStarted', onVotingStarted);
+    socket.on('error', onError);
 
-    // Component unmount olduğunda veya useEffect tekrar çalıştığında tüm dinleyicileri temizle
+    // Temizlik fonksiyonu
     return () => {
       socket.off('roundOver', onRoundOver);
       socket.off('finalCountdown', onFinalCountdown);
@@ -111,10 +106,9 @@ const GameScreen = ({ route, navigation }) => {
       socket.off('error', onError);
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
       }
     };
-  }, [navigation, roomCode, submitted]); // submitted'ı bağımlılıklara ekleyelim ki handleSubmitAnswers güncel state ile çalışsın
+  }, [navigation, roomCode]); // Bağmlılıklar
 
   const handleInputChange = (category, value) => {
     setAnswers(prev => ({ ...prev, [category.toLowerCase()]: value }));
@@ -123,10 +117,10 @@ const GameScreen = ({ route, navigation }) => {
   const handleSubmitAnswers = () => {
     if (!submitted) {
       console.log('Cevaplar gönderiliyor...');
+      // Düzeltildi: answers objesi stringify yapıldı
+      console.log('Gönderilen cevaplar:', JSON.stringify(answers, null, 2));
       socket.emit('submitAnswers', { roomCode, answers });
-      setSubmitted(true); // Cevap gönderildi olarak işaretle
-      // Cevaplar gönderildikten sonra, input alanlarını devre dışı bırak
-      // ve kullanıcının tekrar göndermesini engelle
+      setSubmitted(true);
     }
   };
 
@@ -158,8 +152,8 @@ const GameScreen = ({ route, navigation }) => {
             placeholderTextColor="black"
             onChangeText={text => handleInputChange(category, text)}
             autoCapitalize="words"
-            editable={!submitted} // Cevap gönderildiyse inputları devre dışı bırak
-            value={answers[category.toLowerCase()] || ''} // Değeri state'ten kontrol et
+            editable={!submitted}
+            value={answers[category.toLowerCase()] || ''}
           />
         ))}
 
@@ -167,8 +161,8 @@ const GameScreen = ({ route, navigation }) => {
           <Button
             title={submitted ? "Cevaplar Gönderildi, Bekleniyor..." : "Cevapları Gönder"}
             onPress={handleSubmitAnswers}
-            disabled={submitted} // Cevap gönderildiyse butonu devre dışı bırak
-            color={submitted ? "#cccccc" : "#007bff"} // Renk değişimi
+            disabled={submitted}
+            color={submitted ? "#cccccc" : "#007bff"}
           />
         </View>
       </ScrollView>

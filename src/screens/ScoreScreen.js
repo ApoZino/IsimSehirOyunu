@@ -1,20 +1,20 @@
-// ScoreScreen.js
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Button } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Button, Alert } from 'react-native';
 import { socket } from '../services/socket';
-import { useNavigation } from '@react-navigation/native'; // useNavigation hook'unu import edin
+import { useNavigation } from '@react-navigation/native';
 
 const ScoreScreen = ({ route }) => {
-    const navigation = useNavigation(); // navigation objesini hook ile alın
+    const navigation = useNavigation();
     const { results, roomCode } = route.params;
 
     // Sunucudan yeni tur başlama veya oyun bitme olaylarını dinle
     useEffect(() => {
         const onGameStarted = (data) => {
-            console.log("Yeni tur başladı, GameScreen'e yönlendiriliyor:", data);
+            // Düzeltildi: objeyi stringify yapıldı
+            console.log("Yeni tur başladı, Game ekranına yönlendiriliyor:", JSON.stringify(data, null, 2));
             navigation.replace('Game', {
                 letter: data.letter,
-                roomCode: roomCode, // roomCode'u mevcut route params'tan alabiliriz
+                roomCode: roomCode,
                 duration: data.duration,
                 categories: data.categories,
                 currentRound: data.currentRound,
@@ -23,13 +23,15 @@ const ScoreScreen = ({ route }) => {
         };
 
         const onGameOver = (finalResults) => {
-            console.log("Oyun bitti, GameOverScreen'e yönlendiriliyor:", finalResults);
+            // Düzeltildi: objeyi stringify yapıldı
+            console.log("Oyun bitti, GameOver ekranına yönlendiriliyor:", JSON.stringify(finalResults, null, 2));
             navigation.replace('GameOver', { finalResults });
         };
 
         const onError = (error) => {
-            console.error("ScoreScreen'de Sunucu Hatası:", error);
-            // Alert.alert("Hata", error.message || "Bir hata oluştu."); // İsteğe bağlı
+            // Düzeltildi: error objesi yerine error.message kullanıldı
+            console.error("ScoreScreen'de Sunucu Hatası:", error.message || error);
+            Alert.alert("Hata", error.message || "Bir hata oluştu.");
         };
 
         socket.on('gameStarted', onGameStarted);
@@ -41,37 +43,48 @@ const ScoreScreen = ({ route }) => {
             socket.off('gameOver', onGameOver);
             socket.off('error', onError);
         };
-    }, [navigation, roomCode]); // Bağmlılıkları güncelleyin
+    }, [navigation, roomCode]);
 
     // Sonuçları puana göre sırala (isteğe bağlı)
-    const sortedResults = results.sort((a, b) => b.totalScore - a.totalScore);
+    const sortedResults = Array.isArray(results) ? results.sort((a, b) => b.totalScore - a.totalScore) : [];
+
+    if (!Array.isArray(results) || results.length === 0) {
+        return (
+            <View style={styles.container}>
+                <Text style={styles.title}>Tur Sonuçları</Text>
+                <Text style={styles.noResultsText}>Henüz sonuç yok veya veri yüklenemedi.</Text>
+            </View>
+        );
+    }
 
     return (
         <ScrollView contentContainerStyle={styles.container}>
             <Text style={styles.title}>Tur Sonuçları!</Text>
             {sortedResults.map((playerResult, index) => (
-                <View key={playerResult.username || index} style={styles.playerCard}>
+                <View key={playerResult.username || `player-${index}`} style={styles.playerCard}>
                     <Text style={styles.playerRank}>#{index + 1}</Text>
-                    <Text style={styles.playerName}>{playerResult.username}</Text>
-                    <Text style={styles.roundScore}>Tur Puanı: {playerResult.roundScore}</Text>
-                    <Text style={styles.totalScore}>Toplam Puan: {playerResult.totalScore}</Text>
+                    <Text style={styles.playerName}>{playerResult.username || 'Bilinmeyen Oyuncu'}</Text>
+                    <Text style={styles.roundScore}>Tur Puanı: {playerResult.roundScore !== undefined ? playerResult.roundScore : 0}</Text>
+                    <Text style={styles.totalScore}>Toplam Puan: {playerResult.totalScore !== undefined ? playerResult.totalScore : 0}</Text>
 
-                    <Text style={styles.answersHeader}>Cevaplar ve Puanlar:</Text>
-                    {/* Cevapları ve kategori puanlarını listele */}
-                    {Object.keys(playerResult.answers || {}).map(category => (
-                        <View key={category} style={styles.answerItem}>
-                            <Text style={styles.categoryText}>{category}:</Text>
-                            <Text style={styles.answerText}>
-                                {playerResult.answers[category] || '-'} (Puan: {playerResult.scores[category] || 0})
-                            </Text>
-                        </View>
-                    ))}
+                    {playerResult.answers && Object.keys(playerResult.answers).length > 0 && (
+                        <>
+                            <Text style={styles.answersHeader}>Cevaplar ve Puanlar:</Text>
+                            {Object.keys(playerResult.answers).map(category => (
+                                <View key={category} style={styles.answerItem}>
+                                    <Text style={styles.categoryText}>{category.charAt(0).toUpperCase() + category.slice(1)}:</Text>
+                                    <Text style={styles.answerText}>
+                                        {playerResult.answers[category] || '-'} (Puan: {playerResult.scores?.[category] || 0})
+                                    </Text>
+                                </View>
+                            ))}
+                        </>
+                    )}
+                    {!playerResult.answers || Object.keys(playerResult.answers).length === 0 && (
+                        <Text style={styles.noAnswersText}>Cevap girmedi.</Text>
+                    )}
                 </View>
             ))}
-            
-            {/* Bu buton, bir sonraki tura geçişi veya oyun sonu ekranına yönlendirmeyi server'ın kontrol etmesi gerektiği için genellikle bu ekranda olmaz.
-                Ancak manuel test için tutulabilir. */}
-            {/* <Button title="Devam Et" onPress={() => console.log('Devam et tıklandı')} /> */}
         </ScrollView>
     );
 };
@@ -149,9 +162,21 @@ const styles = StyleSheet.create({
     answerText: {
         fontSize: 16,
         color: '#666',
-        flexShrink: 1, // Uzun cevaplar için
+        flexShrink: 1,
         marginLeft: 5,
     },
+    noResultsText: {
+        fontSize: 18,
+        textAlign: 'center',
+        marginTop: 50,
+        color: '#888',
+    },
+    noAnswersText: {
+        fontSize: 14,
+        color: '#888',
+        marginTop: 5,
+        fontStyle: 'italic',
+    }
 });
 
 export default ScoreScreen;
