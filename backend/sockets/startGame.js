@@ -1,4 +1,4 @@
-// sockets/startGame.js
+// backend/sockets/startGame.js
 module.exports = (socket, io, rooms, startNewRound) => {
     socket.on('startGame', ({ roomCode, categories, totalRounds }) => {
         const room = rooms[roomCode];

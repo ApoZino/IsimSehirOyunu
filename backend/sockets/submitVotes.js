@@ -1,4 +1,4 @@
-// sockets/submitVotes.js
+// backend/sockets/submitVotes.js
 module.exports = (socket, io, rooms, calculateFinalScores) => {
     socket.on('submitVotes', ({ roomCode, playerVotes }) => {
         const room = rooms[roomCode];

@@ -1,4 +1,4 @@
-// sockets/disconnect.js
+// backend/sockets/disconnect.js
 module.exports = (socket, io, rooms, startVotingPhase, calculateFinalScores) => {
     socket.on('disconnect', () => {
         console.log(`Bir kullanıcı ayrıldı: ${socket.id}`);

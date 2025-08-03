@@ -1,4 +1,4 @@
-// sockets/submitAnswers.js
+// backend/sockets/submitAnswers.js
 module.exports = (socket, io, rooms, startVotingPhase) => {
     socket.on('submitAnswers', ({ roomCode, answers }) => {
         const room = rooms[roomCode];

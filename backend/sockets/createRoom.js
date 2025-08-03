@@ -1,4 +1,4 @@
-// sockets/createRoom.js
+// backend/sockets/createRoom.js
 module.exports = (socket, io, rooms) => {
     socket.on('createRoom', (username) => {
         let roomCode;

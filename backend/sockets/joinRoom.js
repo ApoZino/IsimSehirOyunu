@@ -1,4 +1,4 @@
-// sockets/joinRoom.js
+// backend/sockets/joinRoom.js
 module.exports = (socket, io, rooms) => {
     socket.on('joinRoom', ({ roomCode, username }) => {
         const room = rooms[roomCode];

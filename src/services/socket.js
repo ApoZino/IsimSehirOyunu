@@ -1,4 +1,4 @@
-// frontend/src/services/socket.js
+// src/services/socket.js
 import { io } from 'socket.io-client';
 
 // Canlı Render.com backend URL'niz

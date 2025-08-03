@@ -1,4 +1,4 @@
-// sockets/index.js
+// backend/sockets/index.js
 const createRoomHandler = require('./createRoom');
 const joinRoomHandler = require('./joinRoom');
 const startGameHandler = require('./startGame');
