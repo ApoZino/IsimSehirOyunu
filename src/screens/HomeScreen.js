@@ -172,7 +172,7 @@ const HomeScreen = ({ navigation }) => {
           disabled={isLoading} // Yükleme sırasında butonu devre dışı bırak
           color={isLoading ? "#cccccc" : "#007bff"}
         />
-        {isLoading && <ActivityIndicator size="large" color="#0000ff" style={styles.loadingIndicator} />}
+        {isLoading && <ActivityIndicator size="large" color="#007bff" style={styles.loadingIndicator} />}
       </View>
     </KeyboardAvoidingView>
   );

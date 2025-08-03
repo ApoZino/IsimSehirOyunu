@@ -1,4 +1,4 @@
-// frontend/App.js
+// /App.js
 
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native'; // The one and only NavigationContainer

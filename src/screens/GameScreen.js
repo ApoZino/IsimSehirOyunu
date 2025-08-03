@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
+// Button yerine TouchableOpacity import edildi
+import { View, Text, TextInput, Alert, ActivityIndicator, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native'; 
 import { socket } from '../services/socket';
 
 const GameScreen = ({ route, navigation }) => {
@@ -86,7 +87,7 @@ const GameScreen = ({ route, navigation }) => {
 
 
     const onConnectDebug = () => { console.log('GameScreen: Socket yeniden BAĞLANDI (onConnectDebug)!'); };
-    const onDisconnectDebug = () => {
+    const onDisconnectDebug = () => { 
         console.log('GameScreen: Socket bağlantısı KESİLDİ (onDisconnectDebug)!');
         Alert.alert('Bağlantı Hatası', 'Sunucu bağlantısı GameScreen\'de kesildi. Lobiye dönüyor.');
         navigation.replace('Home');
@@ -154,7 +155,7 @@ const GameScreen = ({ route, navigation }) => {
     socket.on('playerJoined', onPlayerJoined);
     socket.on('error', onError);
 
-    // Temizlik fonksiyonu
+    // Temizlik fonksiyonu: Component unmount olduğunda veya useEffect tekrar çalıştığında dinleyicileri kaldır.
     return () => {
       console.log('GameScreen: Socket dinleyicileri temizleniyor (cleanup).');
       socket.off('connect', onConnectDebug);
@@ -180,7 +181,7 @@ const GameScreen = ({ route, navigation }) => {
       console.log('GameScreen: Cevaplar gönderiliyor...');
       console.log('GameScreen: Gönderilen cevaplar:', JSON.stringify(answers, null, 2));
       socket.emit('submitAnswers', { roomCode, answers });
-      setSubmitted(true); // Cevap gönderildi olarak işaretle
+      setSubmitted(true); 
       setIsGameLoading(true); // Cevap gönderildi, diğer oyuncular beklenirken yükleme göster
       console.log('GameScreen: handleSubmitAnswers çağrıldı, isGameLoading TRUE olarak ayarlandı.');
     }
@@ -213,7 +214,8 @@ const GameScreen = ({ route, navigation }) => {
         <Text style={styles.roundInfo}>Tur: {currentRound} / {totalRounds}</Text>
         <Text style={styles.timer}>Kalan Süre: {formatTime(timeLeft)}</Text>
         {isFinalCountdown && (
-          <Text style={styles.warningText}>Bir oyuncu bitirdi! Son 15 saniye!</Text>
+          // Düzeltildi: Dinamik sayaç için doğru JSX yorumu formatı
+          <Text style={styles.warningText}>Son {timeLeft} saniye!</Text> 
         )}
         <Text style={styles.header}>Seçilen Harf:</Text>
         <Text style={styles.letterText}>{letter}</Text>
@@ -232,12 +234,26 @@ const GameScreen = ({ route, navigation }) => {
         ))}
 
         <View style={styles.buttonContainer}>
-          <Button
-            title={submitted ? "Cevaplar Gönderildi, Bekleniyor..." : "Cevapları Gönder"}
+          {/* Button yerine TouchableOpacity kullanıyoruz */}
+          <TouchableOpacity
+            style={[
+              styles.submitButton, // Ana düğme stili
+              submitted && styles.submitButtonDisabled // Devre dışı bırakma stili
+            ]}
             onPress={handleSubmitAnswers}
-            disabled={submitted} // Cevap gönderildiyse butonu devre dışı bırak
-            color={submitted ? "#cccccc" : "#007bff"}
-          />
+            disabled={submitted} // Tıklanamaz hale getir
+          >
+            {submitted ? (
+                // Gönderildiğinde spinner ve metin göster
+                <View style={styles.submitButtonContent}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.submitButtonText}>Cevaplar Gönderildi, Bekleniyor...</Text>
+                </View>
+            ) : (
+                // Normal durumda sadece metin göster
+                <Text style={styles.submitButtonText}>Cevapları Gönder</Text>
+            )}
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -259,7 +275,13 @@ const styles = StyleSheet.create({
   },
   roundInfo: { fontSize: 18, fontWeight: '500', textAlign: 'center', marginBottom: 5, color: 'black' },
   timer: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: 'red', marginBottom: 10 },
-  warningText: { fontSize: 16, textAlign: 'center', color: '#d9534f', marginBottom: 10, fontWeight: 'bold' },
+  warningText: { // Mevcut stilin üzerine ekleme veya değiştirme
+    fontSize: 24, // Büyütülmüş font
+    textAlign: 'center',
+    color: '#d9534f', // Kırmızı
+    marginBottom: 10,
+    fontWeight: 'bold',
+  },
   header: { fontSize: 24, color: '#333', textAlign: 'center' },
   letterText: { fontSize: 96, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: '#007bff' },
   input: {
@@ -274,6 +296,29 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     marginTop: 10,
+  },
+  submitButton: { // Yeni stil: TouchableOpacity için
+    backgroundColor: '#007bff', // Mavi
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 50,
+  },
+  submitButtonDisabled: { // Düğme devre dışı olduğunda
+    backgroundColor: '#cccccc', // Gri
+  },
+  submitButtonContent: { // Düğme içindeki içerik (spinner ve metin)
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitButtonText: { // Düğme metni
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8, // Spinner ile metin arasına boşluk
   },
 });
 

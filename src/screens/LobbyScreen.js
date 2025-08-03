@@ -107,6 +107,7 @@ const LobbyScreen = ({ route, navigation }) => {
         }
     };
 
+    // --- renderPlayer fonksiyonu: Söz dizimi hatası giderildi ---
     const renderPlayer = ({ item }) => (
         <View style={styles.playerItem}>
             <Text style={styles.playerText}>
@@ -117,16 +118,15 @@ const LobbyScreen = ({ route, navigation }) => {
         </View>
     );
 
-    // --- KRİTİK KISIM: isLoading kontrolü ve doğru render ---
-    if (isLoading) { // <--- Bu if bloğu doğru yerde ve eksiksiz olmalı
-        return (     // İçindeki return ifadesiyle birlikte
+    // --- isLoading kontrolü: Söz dizimi hatası giderildi ---
+    if (isLoading) {
+        return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#007bff" />
                 <Text style={styles.loadingText}>Oyun başlatılıyor...</Text>
             </View>
         );
     }
-    // --- KRİTİK KISIM BİTTİ ---
 
     return (
         <View style={styles.container}>
@@ -134,7 +134,7 @@ const LobbyScreen = ({ route, navigation }) => {
             <Text style={styles.playerListHeader}>Oyuncular:</Text>
             <FlatList
                 data={players}
-                renderItem={renderPlayer}
+                renderItem={renderPlayer} 
                 keyExtractor={(item) => item.id}
                 style={styles.playerList}
             />
@@ -167,8 +167,6 @@ const LobbyScreen = ({ route, navigation }) => {
                             Seçilenler: {selectedCategories.join(', ')}
                         </Text>
                     )}
-                    {/* Eğer manuel kategori ekleme isteniyorsa buraya TextInput eklenebilir */}
-
 
                     <Text style={styles.settingLabel}>Tur Sayısı:</Text>
                     <TextInput
@@ -265,7 +263,6 @@ const styles = StyleSheet.create({
         marginTop: 20,
         textAlign: 'center',
     },
-    // Yeni Stil Tanımlamaları
     hostControlsContainer: {
         width: '100%',
         paddingHorizontal: 10,

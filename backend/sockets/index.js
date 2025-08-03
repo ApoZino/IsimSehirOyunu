@@ -116,35 +116,48 @@ function calculateFinalScores(io, rooms, roomCode) {
         const scoresByCategory = {};
 
         const answersCountPerCategory = {};
-        categories.forEach(category => {
+        categories.forEach(categoryDisplayForm => { // categories here are capitalized forms like "İsim"
+            const categoryLowerCase = categoryDisplayForm.toLowerCase(); // e.g., "i̇sim" or "şehir"
             const tempCategoryAnswers = {};
-            // Sadece referee tarafından geçerli bulunan cevapları say
+            
             players.forEach(p => {
-                const ans = (submissions[p.id]?.[category] || "").trim().toLowerCase();
+                // Access submission using its original category key if available, else lowercase.
+                // Assuming client submissions use exact category string as key.
+                const originalCategoryKey = Object.keys(submissions[p.id] || {}).find(key => key.toLowerCase() === categoryLowerCase);
+                const ans = (submissions[p.id]?.[originalCategoryKey || categoryDisplayForm] || "").trim().toLowerCase(); 
+                
                 if (ans && validAnswers[ans]) { 
                     tempCategoryAnswers[ans] = (tempCategoryAnswers[ans] || 0) + 1;
                 }
             });
-            answersCountPerCategory[category] = tempCategoryAnswers;
+            answersCountPerCategory[categoryDisplayForm] = tempCategoryAnswers; // Store by display form
         });
         console.log(`calculateFinalScores [${roomCode}]:   - Kategori bazında cevap sayıları (answersCountPerCategory): ${JSON.stringify(answersCountPerCategory)}`);
 
 
-        categories.forEach(category => {
-            const playerAnswer = (playerAnswers[category] || "").trim().toLowerCase();
+        categories.forEach(categoryDisplayForm => { // Iterate through capitalized forms like "İsim"
+            // !!! CRITICAL FIX: Get player's answer using the correct category key from playerAnswers !!!
+            const originalCategoryKey = Object.keys(playerAnswers).find(key => key.toLowerCase() === categoryDisplayForm.toLowerCase());
+            const playerAnswer = (playerAnswers[originalCategoryKey || categoryDisplayForm] || "").trim().toLowerCase(); 
+
             let points = 0;
 
+            // Puanlama Mantığı BURADA DEĞİŞİYOR
             if (playerAnswer.startsWith(currentLetter.toLowerCase()) && validAnswers[playerAnswer]) {
-                const countInThisCategory = answersCountPerCategory[category]?.[playerAnswer] || 0;
+                // Cevap doğru harfle başlıyor VE hakem tarafından onaylandı
+                const countInThisCategory = answersCountPerCategory[categoryDisplayForm]?.[playerAnswer] || 0; 
+                
                 if (countInThisCategory === 1) {
-                    points = 15; 
+                    points = 10; // Doğru ve Benzersiz cevap
                 } else if (countInThisCategory > 1) {
-                    points = 10; 
+                    points = 5;  // Doğru ve Paylaşılan (aynı) cevap
                 }
             } else {
-                points = 0; // Cevap doğru harfle başlamıyorsa VEYA hakem reddettiyse/oylamadıysa 0 puan.
+                // Cevap yanlış harfle başlıyor VEYA hakem reddetti/oylamadı (Yanlış cevap)
+                points = 0; 
             }
-            scoresByCategory[category] = points;
+
+            scoresByCategory[categoryDisplayForm] = points; 
             roundScore += points;
         });
         console.log(`calculateFinalScores [${roomCode}]:   - Oyuncu ${player.username} için kategori skorları: ${JSON.stringify(scoresByCategory)}`);

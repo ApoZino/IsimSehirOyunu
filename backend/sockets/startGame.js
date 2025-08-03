@@ -9,8 +9,10 @@ module.exports = (socket, io, rooms, startNewRound) => {
                 return;
             }
             room.totalRounds = totalRounds || 5;
-            room.currentRound = 0; // Yeni oyun için sıfırla
-            room.categories = categories || ['isim', 'şehir', 'hayvan', 'bitki', 'eşya'];
+            room.currentRound = 0;
+            // CRITICAL CHANGE: Ensure categories are stored consistently (e.g., all lowercase)
+            room.categories = categories.map(cat => cat.trim().toLowerCase()); // Store all lowercase
+
             // Tüm oyuncuların skorlarını sıfırla
             Object.keys(room.playerScores).forEach(playerId => { room.playerScores[playerId] = 0; });
             
