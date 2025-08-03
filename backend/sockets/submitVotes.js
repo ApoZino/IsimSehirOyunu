@@ -3,58 +3,55 @@ module.exports = (socket, io, rooms, calculateFinalScores) => {
     socket.on('submitVotes', ({ roomCode, playerVotes }) => {
         const room = rooms[roomCode];
 
-        // 1. Oda ve oyun durumu kontrolleri
-        if (room && room.votingStarted) {
-            // 2. Oyuncunun zaten oy verip vermediği kontrolü
-            if (room.playerVotes[socket.id]) {
-                console.warn(`Oylar gönderilemedi (${socket.id}): Zaten oy kullandınız. Oda: ${roomCode}`);
-                socket.emit('error', { message: 'Zaten oy kullandınız.' });
-                return; // Zaten oy kullandıysa işlemi sonlandır
-            }
-
-            // Oyuncuyu oy verenler listesine ekle
-            room.playerVotes[socket.id] = true;
-
-            // Oyları toplama
-            Object.keys(playerVotes).forEach(answer => {
-                const normalizedAnswer = answer.trim().toLowerCase(); // Client'tan gelen anahtarı normalleştir
-                if (!room.votes[normalizedAnswer]) {
-                    room.votes[normalizedAnswer] = { approve: 0, reject: 0 };
-                }
-
-                // Client'tan gelen oy değerini doğrudan kullan
-                if (playerVotes[answer] === 'approve') {
-                    room.votes[normalizedAnswer].approve++;
-                } else if (playerVotes[answer] === 'reject') {
-                    room.votes[normalizedAnswer].reject++;
-                }
-            });
-
-            console.log(`Oylar alındı (${socket.id}) oda ${roomCode} için.`);
-            console.log(`Mevcut oylar (room.votes):`, room.votes); // Toplanan tüm oyları logla
-
-            // --- HATA AYIKLAMA İÇİN EK LOGLAR ---
-            const playersInRoom = room.players.map(p => p.id);
-            const playersWhoVoted = Object.keys(room.playerVotes);
-
-            console.log(`Odadaki toplam oyuncu sayısı (room.players.length): ${room.players.length}`);
-            console.log(`Oy vermiş oyuncu sayısı (Object.keys(room.playerVotes).length): ${playersWhoVoted.length}`);
-            console.log("Odadaki tüm oyuncu ID'leri:", playersInRoom);
-            console.log("Oy veren oyuncu ID'leri:", playersWhoVoted);
-            // --- EK LOGLAR SONU ---
-
-            // 3. Tüm oyuncuların oy verip vermediği kontrolü
-            if (playersWhoVoted.length === room.players.length) {
-                console.log(`Tüm oylar oda ${roomCode} için toplandı. Skor hesaplanıyor.`);
-                clearTimeout(room.timerId); // Oylama süresini durdur
-                calculateFinalScores(io, rooms, roomCode); // Skorları hesapla
-            } else {
-                console.log(`Oda ${roomCode} için tüm oylar henüz gelmedi. Bekleniyor...`);
-            }
-        } else {
-            // 4. Oda veya oylama durumu geçersizse
+        // 1. Basic room and voting phase checks
+        if (!room || !room.votingStarted) {
             console.warn(`Oylar gönderilemedi (${socket.id}): Oda bulunamadı veya oylama başlamadı. Oda: ${roomCode}, RoomExists: ${!!room}, VotingStarted: ${room?.votingStarted}`);
             socket.emit('error', { message: 'Oylar gönderilemedi: Oda bulunamadı veya oylama başlamadı.' });
+            return;
         }
+
+        // 2. NEW: Check if the submitter is the referee
+        if (socket.id !== room.refereeId) {
+            console.warn(`Oylar gönderilemedi (${socket.id}): Sadece hakem oy kullanabilir. Oda: ${roomCode}, Hakem ID: ${room.refereeId}`);
+            socket.emit('error', { message: 'Sadece hakem oy kullanabilir.' });
+            return;
+        }
+
+        // 3. NEW: Check if the referee has already voted for this round
+        // This is important because the referee might submit once, then change their mind and re-submit.
+        // If the intention is to allow referee to re-submit until time runs out, remove this check.
+        // For simplicity, let's assume referee can submit only once per round to advance the game.
+        // If referee can change votes, the game will advance when the timer runs out.
+        if (room.playerVotes[socket.id]) { // This actually checks if referee already submitted votes
+            console.warn(`Oylar gönderilemedi (${socket.id}): Hakem zaten oy kullandı. Oda: ${roomCode}`);
+            socket.emit('error', { message: 'Hakem zaten oy kullandı.' });
+            return;
+        }
+
+        // Mark referee as voted for this round
+        room.playerVotes[socket.id] = true;
+
+        // Store the referee's votes.
+        // Since only one person votes, we can directly assign their decisions.
+        // We can still use room.votes structure, but it will only contain referee's votes.
+        room.votes = {}; // Clear previous votes for clarity if referee re-submits (though logic currently prevents it)
+        Object.keys(playerVotes).forEach(answer => {
+            const normalizedAnswer = answer.trim().toLowerCase();
+            room.votes[normalizedAnswer] = {
+                approve: playerVotes[answer] === 'approve' ? 1 : 0,
+                reject: playerVotes[answer] === 'reject' ? 1 : 0,
+            };
+        });
+
+        console.log(`Hakem oyları alındı (${socket.id}) oda ${roomCode} için.`);
+        console.log(`Mevcut hakem oyları (room.votes):`, room.votes);
+
+        // NEW: Game advances immediately after referee submits votes.
+        // No need to check for all players voting anymore.
+        console.log(`Oda ${roomCode} için hakem oyları toplandı. Skor hesaplanıyor.`);
+        clearTimeout(room.timerId); // Stop the voting timer immediately
+        calculateFinalScores(io, rooms, roomCode); // Call the helper function
+
+        // No else block here because only the referee's single submission advances the game.
     });
 };

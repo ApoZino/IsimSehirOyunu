@@ -1,9 +1,10 @@
-// VotingScreen.js
-import React, { useState } from 'react';
-import { View, Text, Button, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native'; // Alert'i ekleyelim
+import React, { useState, useEffect } from 'react';
+import { View, Text, Button, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { socket } from '../services/socket';
+import { useNavigation } from '@react-navigation/native'; // useNavigation hook'u import edildi
 
 const VotingScreen = ({ route }) => {
+    const navigation = useNavigation(); // navigation objesi hook ile alındı
     const { submissions, players, roomCode } = route.params;
     const [votes, setVotes] = useState({}); // { 'cevap1': 'approve', 'cevap2': 'reject' }
     const [isSubmitting, setIsSubmitting] = useState(false); // Gönderme sırasında butonu devre dışı bırakmak için
@@ -15,10 +16,7 @@ const VotingScreen = ({ route }) => {
     };
 
     const submitVotes = () => {
-        // Henüz tüm cevaplar için oy kullanılmadıysa uyarı verilebilir
-        // Her oyuncunun her kategorisi için tekil cevapları listeleyip,
-        // bu cevapların tamamının oylanıp oylanmadığını kontrol etmek daha sağlam olur.
-        // Basitçe tüm gönderilen cevapların (unique) oylanmasını bekleyelim
+        // Eksik oy kontrolü
         const uniqueAnswersToVote = new Set();
         players.forEach(player => {
             const playerSubmissions = submissions[player.id] || {};
@@ -41,32 +39,68 @@ const VotingScreen = ({ route }) => {
         if (isSubmitting) return; // Zaten gönderiliyorsa tekrar tetiklemeyi engelle
 
         setIsSubmitting(true); // Gönderme işlemi başladı
-        console.log("Oyları sunucuya gönderiliyor:", { roomCode, playerVotes: votes });
+        // Düzeltildi: objeyi stringify yapıldı
+        console.log("Oyları sunucuya gönderiliyor:", JSON.stringify({ roomCode, playerVotes: votes }, null, 2));
         socket.emit('submitVotes', { roomCode, playerVotes: votes });
 
-        // Sunucudan yanıt beklemek veya doğrudan bir sonraki ekrana geçmek yerine,
-        // sunucu "roundOver" olayını gönderdiğinde geçiş yapmalıyız.
-        // Bu butonu artık devre dışı bırakmalıyız.
+        // Buton, isSubmitting state'i ile kontrol edilecek.
+        // Navigasyon, aşağıda tanımlanan Socket.IO dinleyicileri tarafından yapılacak.
     };
 
-    // Sunucudan 'roundOver' olayını dinleyelim (Bu genellikle oyun ekranında olur ama burada da dinlenebilir)
-    // Ancak daha iyi bir mimari için, GameScreen'in 'roundOver'ı dinlemesi ve ScoreScreen'e yönlendirmesi daha iyidir.
-    // Eğer burada dinleyecekseniz:
-    /*
+    // --- Socket Olay Dinleyicileri ---
     useEffect(() => {
+        // Tur bittiğinde skor ekranına yönlendir
         const onRoundOver = (results) => {
+            // Düzeltildi: objeyi stringify yapıldı
+            console.log("VotingScreen: Tur bitti, Score ekranına yönlendiriliyor.", JSON.stringify(results, null, 2));
             navigation.replace('Score', { results, roomCode });
         };
+
+        // Yeni tur başladığında Game ekranına yönlendir (Oyun son turda bitmediyse)
+        const onGameStarted = (data) => {
+            // Düzeltildi: objeyi stringify yapıldı
+            console.log("VotingScreen: Yeni tur başladı, Game ekranına yönlendiriliyor.", JSON.stringify(data, null, 2));
+            navigation.replace('Game', {
+                letter: data.letter,
+                roomCode: roomCode,
+                duration: data.duration,
+                categories: data.categories,
+                currentRound: data.currentRound,
+                totalRounds: data.totalRounds
+            });
+        };
+
+        // Oyun bittiğinde GameOver ekranına yönlendir (Oyun tüm turları tamamladıysa)
+        const onGameOver = (finalResults) => {
+            // Düzeltildi: objeyi stringify yapıldı
+            console.log("VotingScreen: Oyun bitti, GameOver ekranına yönlendiriliyor.", JSON.stringify(finalResults, null, 2));
+            navigation.replace('GameOver', { finalResults });
+        };
+        
+        // Genel hata dinleyicisi
+        const onError = (error) => {
+            // Düzeltildi: error objesi yerine error.message kullanıldı
+            console.error("VotingScreen'de Sunucu Hatası:", error.message || error);
+            Alert.alert("Hata", error.message || "Bir hata oluştu.");
+        };
+
+        // Socket olaylarını dinlemeye başla
         socket.on('roundOver', onRoundOver);
+        socket.on('gameStarted', onGameStarted);
+        socket.on('gameOver', onGameOver);
+        socket.on('error', onError);
+
+        // Component unmount olduğunda veya effect tekrar çalıştığında dinleyicileri temizle
         return () => {
             socket.off('roundOver', onRoundOver);
+            socket.off('gameStarted', onGameStarted);
+            socket.off('gameOver', onGameOver);
+            socket.off('error', onError);
         };
-    }, [navigation, roomCode]);
-    */
-
+    }, [navigation, roomCode]); // `navigation` ve `roomCode` bağımlılık olarak eklendi
 
     return (
-        <ScrollView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.container}>
             <Text style={styles.title}>Oylama Zamanı!</Text>
             {/* Tüm oyuncuların tüm cevaplarını listele */}
             {players.map(player => (
@@ -81,19 +115,19 @@ const VotingScreen = ({ route }) => {
                         const voteStatus = votes[normalizedAnswer]; // Normalize edilmiş cevabı kullan
 
                         return (
-                            <View key={category + player.id} style={styles.answerRow}> {/* Key'i unique yapalım */}
+                            <View key={category + player.id} style={styles.answerRow}> {/* Key'i unique yapıldı */}
                                 <Text style={styles.answerText}>{category}: {answer}</Text>
                                 <View style={styles.voteButtons}>
                                     <TouchableOpacity
                                         style={[styles.button, voteStatus === 'approve' && styles.approveSelected]}
-                                        onPress={() => handleVote(answer, 'approve')} // handleVote içine doğrudan answer'ı gönder
+                                        onPress={() => handleVote(answer, 'approve')}
                                         disabled={isSubmitting} // Gönderme sırasında butonu devre dışı bırak
                                     >
                                         <Text style={styles.buttonText}>✅</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={[styles.button, voteStatus === 'reject' && styles.rejectSelected]}
-                                        onPress={() => handleVote(answer, 'reject')} // handleVote içine doğrudan answer'ı gönder
+                                        onPress={() => handleVote(answer, 'reject')}
                                         disabled={isSubmitting} // Gönderme sırasında butonu devre dışı bırak
                                     >
                                         <Text style={styles.buttonText}>❌</Text>
@@ -175,7 +209,6 @@ const styles = StyleSheet.create({
     rejectSelected: {
         backgroundColor: '#dc3545', // Kırmızı
     },
-    // Diğer stil tanımlamaları
 });
 
 export default VotingScreen;
