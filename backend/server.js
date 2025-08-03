@@ -12,13 +12,18 @@ const io = new Server(server, {
 
 const rooms = {};
 
+// --- YARDIMCI FONKSİYONLAR ---
+
 function startNewRound(roomCode) {
     const room = rooms[roomCode];
     if (!room) return;
 
     room.currentRound += 1;
     room.gameStarted = true;
+    room.votingStarted = false;
     room.submissions = {};
+    room.votes = {};
+    room.playerVotes = {};
     room.finalCountdownStarted = false;
 
     const allowedLetters = "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ";
@@ -36,16 +41,41 @@ function startNewRound(roomCode) {
     });
     console.log(`Oda: ${roomCode}, Tur: ${room.currentRound}/${room.totalRounds} başlatıldı. Harf: ${randomLetter}`);
 
-    room.timerId = setTimeout(() => scoreRound(roomCode), DURATION * 1000);
+    room.timerId = setTimeout(() => startVotingPhase(roomCode), DURATION * 1000);
 }
 
-function scoreRound(roomCode) {
+function startVotingPhase(roomCode) {
     const room = rooms[roomCode];
     if (!room || !room.gameStarted) return;
-
+    
     room.gameStarted = false;
-    const { players, submissions, currentLetter, categories } = room;
+    room.votingStarted = true;
+
+    console.log(`Oda ${roomCode} için oylama aşaması başladı.`);
+    io.to(roomCode).emit('votingStarted', { submissions: room.submissions, players: room.players });
+
+    const VOTING_DURATION = 60;
+    room.timerId = setTimeout(() => {
+        console.log(`Oda ${roomCode} için oylama süresi doldu.`);
+        calculateFinalScores(roomCode);
+    }, VOTING_DURATION * 1000);
+}
+
+function calculateFinalScores(roomCode) {
+    const room = rooms[roomCode];
+    if (!room || !room.votingStarted) return;
+
+    room.votingStarted = false;
+    const { players, submissions, votes, currentLetter, categories } = room;
     const roundResults = {};
+    const validAnswers = {};
+
+    Object.keys(votes).forEach(answer => {
+        const answerVotes = votes[answer];
+        if (answerVotes.approve >= answerVotes.reject) {
+            validAnswers[answer] = true;
+        }
+    });
 
     players.forEach(player => {
         const playerAnswers = submissions[player.id] || {};
@@ -56,16 +86,18 @@ function scoreRound(roomCode) {
             const answersForCategory = {};
             players.forEach(p => {
                 const ans = (submissions[p.id]?.[category] || "").trim().toLowerCase();
-                if (ans && ans.startsWith(currentLetter.toLowerCase())) {
+                if (validAnswers[ans]) {
                     answersForCategory[ans] = (answersForCategory[ans] || 0) + 1;
                 }
             });
 
             const playerAnswer = (playerAnswers[category] || "").trim().toLowerCase();
             let points = 0;
-            if (playerAnswer && playerAnswer.startsWith(currentLetter.toLowerCase())) {
-                if (answersForCategory[playerAnswer] === 1) points = 10;
-                else if (answersForCategory[playerAnswer] > 1) points = 5;
+            if (validAnswers[playerAnswer] && playerAnswer.startsWith(currentLetter.toLowerCase())) {
+                if (answersForCategory[playerAnswer] === 1) points = 15;
+                else if (answersForCategory[playerAnswer] > 1) points = 10;
+            } else if (playerAnswer.startsWith(currentLetter.toLowerCase())) {
+                points = 5; // Onaylanmamış ama doğru harfle başlayanlara 5 puan
             }
             scoresByCategory[category] = points;
             roundScore += points;
@@ -93,13 +125,13 @@ function scoreRound(roomCode) {
     }
 }
 
+// --- SOCKET OLAYLARI ---
 io.on('connection', (socket) => {
     console.log(`Yeni bir kullanıcı bağlandı: ${socket.id}`);
 
     socket.on('createRoom', (username) => {
         let roomCode;
         do { roomCode = Math.random().toString(36).substring(2, 7).toUpperCase(); } while (rooms[roomCode]);
-        
         rooms[roomCode] = { players: [], playerScores: {}, submissions: {} };
         const player = { id: socket.id, username };
         rooms[roomCode].players.push(player);
@@ -111,7 +143,7 @@ io.on('connection', (socket) => {
     socket.on('joinRoom', ({ roomCode, username }) => {
         const room = rooms[roomCode];
         if (room) {
-            if(room.gameStarted) return socket.emit('error', {message: 'Oyun çoktan başladı!'});
+            if(room.gameStarted || room.votingStarted) return socket.emit('error', {message: 'Oyun çoktan başladı!'});
             const player = { id: socket.id, username };
             room.players.push(player);
             rooms[roomCode].playerScores[socket.id] = 0;
@@ -129,39 +161,41 @@ io.on('connection', (socket) => {
             room.totalRounds = totalRounds || 5;
             room.currentRound = 0;
             room.categories = categories || ['isim', 'şehir', 'hayvan', 'bitki', 'eşya'];
-            
-            Object.keys(room.playerScores).forEach(playerId => {
-                room.playerScores[playerId] = 0;
-            });
-
+            Object.keys(room.playerScores).forEach(playerId => { room.playerScores[playerId] = 0; });
             startNewRound(roomCode);
         }
     });
 
     socket.on('submitAnswers', ({ roomCode, answers }) => {
         const room = rooms[roomCode];
-        if (room && room.gameStarted) {
-            if (!room.submissions[socket.id]) {
-                room.submissions[socket.id] = answers;
-                console.log(`Cevap alındı: ${socket.id}`);
-
-                if (!room.finalCountdownStarted) {
-                    room.finalCountdownStarted = true;
-                    clearTimeout(room.timerId);
-                    console.log(`${roomCode} odasında bir oyuncu erken bitirdi. Ana zamanlayıcı iptal edildi.`);
-                    
-                    io.to(roomCode).emit('finalCountdown', { duration: 15 });
-                    
-                    room.timerId = setTimeout(() => {
-                        console.log(`${roomCode} odasında 15 saniyelik süre doldu.`);
-                        scoreRound(roomCode);
-                    }, 15 * 1000);
-                }
+        if (room && room.gameStarted && !room.submissions[socket.id]) {
+            room.submissions[socket.id] = answers;
+            console.log(`Cevap alındı: ${socket.id}`);
+            if (Object.keys(room.submissions).length === room.players.length) {
+                clearTimeout(room.timerId);
+                startVotingPhase(roomCode);
             }
         }
     });
 
-    // ... disconnect ...
+    socket.on('submitVotes', ({ roomCode, playerVotes }) => {
+        const room = rooms[roomCode];
+        if (room && room.votingStarted) {
+            room.playerVotes[socket.id] = true; // Oyuncunun oy verdiğini işaretle
+            Object.keys(playerVotes).forEach(answer => {
+                if (!room.votes[answer]) room.votes[answer] = { approve: 0, reject: 0 };
+                if (playerVotes[answer] === 'approve') room.votes[answer].approve++;
+                else if (playerVotes[answer] === 'reject') room.votes[answer].reject++;
+            });
+
+            if(Object.keys(room.playerVotes).length === room.players.length) {
+                clearTimeout(room.timerId);
+                calculateFinalScores(roomCode);
+            }
+        }
+    });
+
+    socket.on('disconnect', () => { /* ... disconnect logic ... */ });
 });
 
 server.listen(PORT, () => {
