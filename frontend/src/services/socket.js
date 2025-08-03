@@ -1,7 +1,8 @@
-// services/socket.js
+// frontend/src/services/socket.js
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = 'https://isimsehiroyunu.onrender.com'; // Sunucu adresinizin doğru olduğundan emin olun
+// Canlı Render.com backend URL'niz
+const SOCKET_URL = 'https://isimsehiroyunu.onrender.com'; 
 
 // Socket.IO client'ı oluştur
 const socket = io(SOCKET_URL, {

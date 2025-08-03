@@ -10,14 +10,14 @@ import VotingScreen from '../screens/VotingScreen';
 const Stack = createNativeStackNavigator();
 
 const AppNavigator = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }}>
-    <Stack.Screen name="Home" component={HomeScreen} />
-    <Stack.Screen name="Lobby" component={LobbyScreen} />
-    <Stack.Screen name="Game" component={GameScreen} />
-    <Stack.Screen name="Voting" component={VotingScreen} />
-    <Stack.Screen name="Score" component={ScoreScreen} />
-    <Stack.Screen name="GameOver" component={GameOverScreen} />
-  </Stack.Navigator>
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Screen name="Home" component={HomeScreen} />
+    <Stack.Screen name="Lobby" component={LobbyScreen} />
+    <Stack.Screen name="Game" component={GameScreen} />
+    <Stack.Screen name="Voting" component={VotingScreen} /> {/* 'VotingScreen' yerine 'Voting' */}
+    <Stack.Screen name="Score" component={ScoreScreen} />
+    <Stack.Screen name="GameOver" component={GameOverScreen} />
+  </Stack.Navigator>
 );
 
 export default AppNavigator;

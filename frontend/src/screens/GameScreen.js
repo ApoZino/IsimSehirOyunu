@@ -56,7 +56,6 @@ const GameScreen = ({ route, navigation }) => {
     console.log(`GameScreen: Şu anki Socket ID: ${socket.id}, Bağlı mı: ${socket.connected}`);
     console.log(`GameScreen: route.params: ${JSON.stringify(route.params, null, 2)}`);
 
-    // **KRİTİK EKLEMELER BAŞLANGICI**
     // Bağlantı durumunu kontrol et ve bağlı değilse bağlanmayı dene
     if (!socket.connected) {
         console.warn('GameScreen: useEffect çalıştı ama socket bağlı değil. Yeniden bağlanmayı deneyeceğim.');
@@ -66,8 +65,6 @@ const GameScreen = ({ route, navigation }) => {
     // Bağlantı durumundaki değişiklikleri izlemek için dinleyici (debug amaçlı)
     const onConnectDebug = () => {
         console.log('GameScreen: Socket yeniden BAĞLANDI (onConnectDebug)!');
-        // Bağlantı kurulduktan sonra oyun başlatma olayını tekrar tetiklemeyi düşünebiliriz
-        // Ancak bu, sunucudan bir gameStarted olayı gelmesini beklememiz gereken ana senaryo.
     };
     const onDisconnectDebug = () => {
         console.log('GameScreen: Socket bağlantısı KESİLDİ (onDisconnectDebug)!');
@@ -77,9 +74,8 @@ const GameScreen = ({ route, navigation }) => {
 
     socket.on('connect', onConnectDebug);
     socket.on('disconnect', onDisconnectDebug);
-    // **KRİTİK EKLEMELER SONU**
 
-    // onGameStarted olayı için ayrı bir fonksiyon tanımlıyoruz
+    // Bu fonksiyonu burada tanımlıyoruz çünkü useEffect içinde kalıcı olarak bağlı kalacak.
     const handleGameStartedOnMount = (data) => {
       console.log('GameScreen: >>>>> ONGAMESTARTED OLAYI ALINDI! <<<<< Veri:', JSON.stringify(data, null, 2));
       // Resetleme işlemleri

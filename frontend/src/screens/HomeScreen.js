@@ -1,15 +1,15 @@
-// HomeScreen.js
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
-import { socket } from '../services/socket';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { socket } from '../services/socket'; // Socket bağlantınız
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Kullanıcı adı kaydetmek için
 
 const HomeScreen = ({ navigation }) => {
   const [username, setUsername] = useState('');
   const [roomCode, setRoomCode] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [socketStatus, setSocketStatus] = useState('Disconnected'); // Yeni state
+  const [isLoading, setIsLoading] = useState(false); // Yükleme durumu için state
+  const [socketStatus, setSocketStatus] = useState('Disconnected'); // Socket bağlantı durumu için
 
+  // Component yüklendiğinde kullanıcı adını AsyncStorage'dan yükle
   useEffect(() => {
     const loadUsername = async () => {
       try {
@@ -24,7 +24,7 @@ const HomeScreen = ({ navigation }) => {
     };
     loadUsername();
 
-    // Socket olay dinleyicileri
+    // Socket bağlantı durumlarını dinle
     const onConnect = () => {
       console.log('HomeScreen: Socket bağlandı!', socket.id);
       setSocketStatus('Connected');
@@ -41,15 +41,18 @@ const HomeScreen = ({ navigation }) => {
       setIsLoading(false);
       Alert.alert('Hata', data.message || 'Bir hata oluştu.');
     };
+
+    // Oda oluşturulduğunda veya odaya katıldığında tetiklenecek dinleyiciler
     const onRoomCreated = (data) => {
-      console.log('HomeScreen: "roomCreated" olayı alındı:', JSON.stringify(data, null, 2));
-      setIsLoading(false);
-      navigation.navigate('Lobby', { ...data, username });
+        console.log('HomeScreen: "roomCreated" olayı alındı:', JSON.stringify(data, null, 2));
+        setIsLoading(false); // Yüklemeyi durdur
+        navigation.navigate('Lobby', { ...data, username }); // Lobi ekranına yönlendir
     };
+
     const onRoomJoined = (data) => {
-      console.log('HomeScreen: "roomJoined" olayı alındı:', JSON.stringify(data, null, 2));
-      setIsLoading(false);
-      navigation.navigate('Lobby', { ...data, username });
+        console.log('HomeScreen: "roomJoined" olayı alındı:', JSON.stringify(data, null, 2));
+        setIsLoading(false); // Yüklemeyi durdur
+        navigation.navigate('Lobby', { ...data, username }); // Lobi ekranına yönlendir
     };
 
     socket.on('connect', onConnect);
@@ -58,17 +61,18 @@ const HomeScreen = ({ navigation }) => {
     socket.on('roomCreated', onRoomCreated);
     socket.on('roomJoined', onRoomJoined);
 
-    // Component unmount olduğunda dinleyicileri temizle
+    // Component unmount olduğunda veya effect yeniden çalıştığında dinleyicileri temizle
     return () => {
-      console.log('HomeScreen: Socket dinleyicileri temizleniyor.');
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
-      socket.off('error', onError);
-      socket.off('roomCreated', onRoomCreated);
-      socket.off('roomJoined', onRoomJoined);
+        console.log('HomeScreen: Socket dinleyicileri temizleniyor.');
+        socket.off('connect', onConnect);
+        socket.off('disconnect', onDisconnect);
+        socket.off('error', onError);
+        socket.off('roomCreated', onRoomCreated);
+        socket.off('roomJoined', onRoomJoined);
     };
-  }, [username, navigation]);
+  }, [username, navigation]); // `username` ve `navigation` bağımlılık olarak eklendi
 
+  // Kullanıcı adı değiştiğinde state'i ve AsyncStorage'ı güncelle
   const handleUsernameChange = async (text) => {
     setUsername(text);
     try {
@@ -78,13 +82,14 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  // Yeni oda oluşturma işlemi
   const handleCreateRoom = () => {
     if (!username) {
       Alert.alert('Hata', 'Lütfen bir kullanıcı adı girin.');
       return;
     }
-    setIsLoading(true);
-    socket.connect(); // Bağlantıyı kurma isteği
+    setIsLoading(true); // Yüklemeyi başlat
+    socket.connect(); // Socket bağlantısını kurmaya çalış
     console.log('HomeScreen: "createRoom" isteği gönderiliyor. Başlangıç socket durumu:', socket.connected);
     // Bağlantı kurulana kadar beklemek için daha sağlam bir yaklaşım:
     if (socket.connected) {
@@ -103,14 +108,15 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  // Mevcut odaya katılma işlemi
   const handleJoinRoom = () => {
     if (!username || !roomCode) {
       Alert.alert('Hata', 'Kullanıcı adı ve oda kodu boş bırakılamaz.');
       return;
     }
-    setIsLoading(true);
-    socket.connect(); // Bağlantıyı kurma isteği
-    console.log('HomeScreen: "joinRoom" isteği gönderiliyor. Başlangıç socket durumu:', socket.connected);
+    setIsLoading(true); // Yüklemeyi başlat
+    socket.connect(); // Socket bağlantısını kurmaya çalış
+    console.log('HomeScreen: "joinRoom" isteği gönderiliyor. Oda kodu:', roomCode, 'Başlangıç socket durumu:', socket.connected);
     
     if (socket.connected) {
         socket.emit('joinRoom', { roomCode, username });
@@ -140,14 +146,14 @@ const HomeScreen = ({ navigation }) => {
           placeholderTextColor="black"
           value={username}
           onChangeText={handleUsernameChange}
-          editable={!isLoading}
+          editable={!isLoading} // Yükleme sırasında inputları devre dışı bırak
         />
         {/* Socket bağlantı durumunu göster */}
         <Text style={styles.statusText}>Durum: {socketStatus}</Text>
         <Button
           title="Yeni Oda Kur"
           onPress={handleCreateRoom}
-          disabled={isLoading}
+          disabled={isLoading} // Yükleme sırasında butonu devre dışı bırak
           color={isLoading ? "#cccccc" : "#007bff"}
         />
         <Text style={styles.orText}>- VEYA -</Text>
@@ -158,12 +164,12 @@ const HomeScreen = ({ navigation }) => {
           value={roomCode}
           onChangeText={setRoomCode}
           autoCapitalize="characters"
-          editable={!isLoading}
+          editable={!isLoading} // Yükleme sırasında inputları devre dışı bırak
         />
         <Button
           title="Odaya Katıl"
           onPress={handleJoinRoom}
-          disabled={isLoading}
+          disabled={isLoading} // Yükleme sırasında butonu devre dışı bırak
           color={isLoading ? "#cccccc" : "#007bff"}
         />
         {isLoading && <ActivityIndicator size="large" color="#0000ff" style={styles.loadingIndicator} />}

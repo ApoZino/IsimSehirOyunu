@@ -8,7 +8,7 @@ const app = express();
 const server = http.createServer(app);
 const PORT = 3000;
 
-// Merkezi oyun durumu (tüm soket handler'ları tarafından erişilebilir olmalı)
+// Merkezi oyun durumu
 const rooms = {};
 
 const io = new Server(server, {
