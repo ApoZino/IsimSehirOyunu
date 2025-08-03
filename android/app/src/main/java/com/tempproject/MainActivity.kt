@@ -1,4 +1,4 @@
-package com.isimsehiroyunu
+package com.tempproject
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

@@ -13,6 +13,11 @@ const LobbyScreen = ({ route, navigation }) => {
     const isHost = players[0]?.id === socket.id;
 
     useEffect(() => {
+        console.log("LobbyScreen: useEffect çalıştı. Socket dinleyicileri kuruluyor.");
+        console.log(`LobbyScreen: Socket ID: ${socket.id}, Bağlı mı: ${socket.connected}`);
+        console.log(`LobbyScreen: route.params: ${JSON.stringify(route.params, null, 2)}`);
+
+
         const onPlayerJoined = (updatedPlayers) => {
             console.log('LobbyScreen: Oyuncu katıldı, güncel oyuncular:', JSON.stringify(updatedPlayers, null, 2));
             setPlayers(updatedPlayers);
@@ -57,7 +62,9 @@ const LobbyScreen = ({ route, navigation }) => {
         socket.on('gameStarted', onGameStarted);
         socket.on('error', onError);
 
+        // Temizlik fonksiyonu
         return () => {
+            console.log("LobbyScreen: Socket dinleyicileri temizleniyor (cleanup).");
             socket.off('playerJoined', onPlayerJoined);
             socket.off('playerLeft', onPlayerLeft);
             socket.off('gameStarted', onGameStarted);
