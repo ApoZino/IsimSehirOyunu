@@ -1,114 +1,157 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, Button, SafeAreaView } from 'react-native';
+// ScoreScreen.js
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Button } from 'react-native';
 import { socket } from '../services/socket';
+import { useNavigation } from '@react-navigation/native'; // useNavigation hook'unu import edin
 
-const ScoreScreen = ({ route, navigation }) => {
-  const { results, roomCode } = route.params;
-  const [countdown, setCountdown] = useState(10);
+const ScoreScreen = ({ route }) => {
+    const navigation = useNavigation(); // navigation objesini hook ile alın
+    const { results, roomCode } = route.params;
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-        setCountdown(prev => (prev <= 1 ? 0 : prev - 1));
-    }, 1000);
+    // Sunucudan yeni tur başlama veya oyun bitme olaylarını dinle
+    useEffect(() => {
+        const onGameStarted = (data) => {
+            console.log("Yeni tur başladı, GameScreen'e yönlendiriliyor:", data);
+            navigation.replace('Game', {
+                letter: data.letter,
+                roomCode: roomCode, // roomCode'u mevcut route params'tan alabiliriz
+                duration: data.duration,
+                categories: data.categories,
+                currentRound: data.currentRound,
+                totalRounds: data.totalRounds
+            });
+        };
 
-    const onGameStarted = (gameData) => {
-      navigation.replace('Game', { ...gameData, roomCode });
-    };
-    const onGameOver = (finalResults) => {
-      navigation.replace('GameOver', { results: finalResults });
-    };
+        const onGameOver = (finalResults) => {
+            console.log("Oyun bitti, GameOverScreen'e yönlendiriliyor:", finalResults);
+            navigation.replace('GameOver', { finalResults });
+        };
 
-    socket.on('gameStarted', onGameStarted);
-    socket.on('gameOver', onGameOver);
+        const onError = (error) => {
+            console.error("ScoreScreen'de Sunucu Hatası:", error);
+            // Alert.alert("Hata", error.message || "Bir hata oluştu."); // İsteğe bağlı
+        };
 
-    return () => {
-      clearInterval(timer);
-      socket.off('gameStarted', onGameStarted);
-      socket.off('gameOver', onGameOver);
-    };
-  }, [navigation, roomCode]);
+        socket.on('gameStarted', onGameStarted);
+        socket.on('gameOver', onGameOver);
+        socket.on('error', onError);
 
-  // Her bir oyuncunun sonucunu render eden fonksiyon
-  const renderPlayerResult = ({ item }) => (
-    <View style={styles.playerContainer}>
-      {/* Oyuncu Adı ve Puan Başlığı */}
-      <View style={styles.playerHeader}>
-        <Text style={styles.username}>{item.username}</Text>
-        <Text style={styles.totalScore}>Toplam: {item.totalScore}</Text>
-      </View>
-      <Text style={styles.roundScore}>Bu Tur: +{item.roundScore} Puan</Text>
-      
-      {/* --- YENİ: Cevap Detayları Bölümü --- */}
-      <View style={styles.detailsContainer}>
-        {/* Object.keys ile oyuncunun puanlarının olduğu kategorileri dönüyoruz */}
-        {Object.keys(item.scores).map(category => (
-          <View key={category} style={styles.answerRow}>
-            <Text style={styles.categoryText}>{category.charAt(0).toUpperCase() + category.slice(1)}:</Text>
-            <Text style={styles.answerText}>{item.answers[category] || "-"}</Text>
-            <Text style={styles.scoreText}>{item.scores[category]} Puan</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
+        return () => {
+            socket.off('gameStarted', onGameStarted);
+            socket.off('gameOver', onGameOver);
+            socket.off('error', onError);
+        };
+    }, [navigation, roomCode]); // Bağmlılıkları güncelleyin
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.pageTitle}>Tur Sonuçları</Text>
-      <FlatList
-        data={results.sort((a,b) => b.totalScore - a.totalScore)}
-        renderItem={renderPlayerResult}
-        keyExtractor={(item) => item.username}
-        style={{ marginVertical: 10 }}
-      />
-      <Text style={styles.waitingText}>
-        {countdown > 0 ? `Sonraki tur ${countdown} saniye içinde başlayacak...` : 'Yeni tur başlıyor...'}
-      </Text>
-      <Button title="Ana Menüye Dön" onPress={() => navigation.navigate('Home')} />
-    </SafeAreaView>
-  );
+    // Sonuçları puana göre sırala (isteğe bağlı)
+    const sortedResults = results.sort((a, b) => b.totalScore - a.totalScore);
+
+    return (
+        <ScrollView contentContainerStyle={styles.container}>
+            <Text style={styles.title}>Tur Sonuçları!</Text>
+            {sortedResults.map((playerResult, index) => (
+                <View key={playerResult.username || index} style={styles.playerCard}>
+                    <Text style={styles.playerRank}>#{index + 1}</Text>
+                    <Text style={styles.playerName}>{playerResult.username}</Text>
+                    <Text style={styles.roundScore}>Tur Puanı: {playerResult.roundScore}</Text>
+                    <Text style={styles.totalScore}>Toplam Puan: {playerResult.totalScore}</Text>
+
+                    <Text style={styles.answersHeader}>Cevaplar ve Puanlar:</Text>
+                    {/* Cevapları ve kategori puanlarını listele */}
+                    {Object.keys(playerResult.answers || {}).map(category => (
+                        <View key={category} style={styles.answerItem}>
+                            <Text style={styles.categoryText}>{category}:</Text>
+                            <Text style={styles.answerText}>
+                                {playerResult.answers[category] || '-'} (Puan: {playerResult.scores[category] || 0})
+                            </Text>
+                        </View>
+                    ))}
+                </View>
+            ))}
+            
+            {/* Bu buton, bir sonraki tura geçişi veya oyun sonu ekranına yönlendirmeyi server'ın kontrol etmesi gerektiği için genellikle bu ekranda olmaz.
+                Ancak manuel test için tutulabilir. */}
+            {/* <Button title="Devam Et" onPress={() => console.log('Devam et tıklandı')} /> */}
+        </ScrollView>
+    );
 };
 
-// --- STİLLER GÜNCELLENDİ ---
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 10, backgroundColor: '#f0f0f0' },
-  pageTitle: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginVertical: 10, color: 'black' },
-  playerContainer: { 
-    marginBottom: 15, 
-    padding: 15, 
-    backgroundColor: 'white', 
-    borderWidth: 1, 
-    borderColor: '#ddd', 
-    borderRadius: 8 
-  },
-  playerHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center' 
-  },
-  username: { fontSize: 20, fontWeight: 'bold', color: 'black' },
-  totalScore: { fontSize: 18, color: 'black', fontWeight: 'bold' },
-  roundScore: { 
-    fontSize: 16, 
-    color: 'black', 
-    marginTop: 5, 
-    marginBottom: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee'
-  },
-  detailsContainer: { 
-    marginTop: 5 
-  },
-  answerRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    paddingVertical: 4 
-  },
-  categoryText: { flex: 2, fontWeight: 'bold', color: 'black' },
-  answerText: { flex: 3, fontStyle: 'italic', color: 'black' },
-  scoreText: { flex: 2, textAlign: 'right', color: 'black', fontWeight: 'bold' },
-  waitingText: { padding: 20, textAlign: 'center', fontSize: 16, fontStyle: 'italic', color: 'black' },
+    container: {
+        flexGrow: 1,
+        padding: 20,
+        backgroundColor: '#f5f5f5',
+    },
+    title: {
+        fontSize: 28,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        marginBottom: 20,
+        color: '#333',
+    },
+    playerCard: {
+        backgroundColor: 'white',
+        borderRadius: 10,
+        padding: 15,
+        marginBottom: 15,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+        borderLeftWidth: 5,
+        borderLeftColor: '#007bff',
+    },
+    playerRank: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#888',
+        position: 'absolute',
+        top: 10,
+        right: 15,
+    },
+    playerName: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        marginBottom: 5,
+        color: '#007bff',
+    },
+    roundScore: {
+        fontSize: 18,
+        color: '#5cb85c', // Yeşil
+        marginBottom: 3,
+    },
+    totalScore: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#f0ad4e', // Turuncu
+        marginBottom: 10,
+    },
+    answersHeader: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginTop: 10,
+        marginBottom: 5,
+        color: '#555',
+    },
+    answerItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 3,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    categoryText: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: 'black',
+    },
+    answerText: {
+        fontSize: 16,
+        color: '#666',
+        flexShrink: 1, // Uzun cevaplar için
+        marginLeft: 5,
+    },
 });
 
 export default ScoreScreen;

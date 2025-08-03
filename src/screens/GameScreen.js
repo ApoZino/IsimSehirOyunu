@@ -1,98 +1,120 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react'; // useRef eklendi
+import { View, Text, TextInput, Button, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native'; // Alert eklendi
 import { socket } from '../services/socket';
 
 const GameScreen = ({ route, navigation }) => {
-  // Destructure params from route.params
   const { letter, roomCode, duration, categories, currentRound, totalRounds } = route.params;
 
-  // State variables
   const [answers, setAnswers] = useState({});
-  const [timeLeft, setTimeLeft] = useState(duration || 300); // Use duration from route.params
+  const [timeLeft, setTimeLeft] = useState(duration || 300);
   const [isFinalCountdown, setIsFinalCountdown] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [timerIntervalId, setTimerIntervalId] = useState(null); // To store the ID of the countdown timer
+  
+  // useRef kullanarak zamanlayıcı ID'sini tutmak, re-renderlarda değişmez
+  const timerIntervalRef = useRef(null);
 
-  // --- Timer Logic for game round ---
+  // --- Zamanlayıcı Mantığı (Oyun Turu) ---
   useEffect(() => {
-    // Start a new timer if timeLeft is positive and no timer is running
-    if (timeLeft > 0 && timerIntervalId === null) {
-      const timer = setInterval(() => {
+    // Mevcut bir zamanlayıcı varsa temizle
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+
+    if (timeLeft > 0) {
+      // Yeni zamanlayıcıyı başlat
+      timerIntervalRef.current = setInterval(() => {
         setTimeLeft(prev => {
           if (prev <= 1) {
-            clearInterval(timer); // Stop timer when it reaches 0
-            setTimerIntervalId(null);
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+            // Zaman bittiğinde ve henüz cevap gönderilmediyse otomatik gönder
+            if (!submitted) {
+              handleSubmitAnswers();
+            }
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
-      setTimerIntervalId(timer); // Save the timer ID
     } else if (timeLeft === 0 && !submitted) {
-      // If time runs out and answers not submitted, auto-submit
-      handleSubmitAnswers();
+        // Zaman 0'a ulaştığında ve cevaplar henüz gönderilmediyse
+        handleSubmitAnswers();
     }
 
-    // Cleanup function: Clear timer if component unmounts or dependencies change
+    // Component unmount olduğunda veya useEffect tekrar çalıştığında zamanlayıcıyı temizle
     return () => {
-      if (timerIntervalId) {
-        clearInterval(timerIntervalId);
-        setTimerIntervalId(null);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
       }
     };
-  }, [timeLeft, submitted]); // Re-run effect if timeLeft or submitted changes
+  }, [duration, submitted]); // 'duration' parametresi değiştiğinde zamanlayıcıyı resetle
 
-
-  // --- Socket Event Listeners ---
+  // --- Socket Olay Dinleyicileri ---
   useEffect(() => {
     const onRoundOver = (results) => {
-      // Navigate to score screen when round is over
+      console.log('Tur Bitti! Sonuçlar:', results);
+      // Zamanlayıcıyı temizle (eğer hala çalışıyorsa)
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
       navigation.replace('Score', { results, roomCode });
     };
 
-    const onFinalCountdown = ({ duration }) => {
+    const onFinalCountdown = ({ duration: finalDuration }) => {
+      console.log('Son Geri Sayım Başladı! Süre:', finalDuration);
       setIsFinalCountdown(true);
-      // Ensure the main timer is stopped and replaced with final countdown
-      if (timerIntervalId) {
-        clearInterval(timerIntervalId);
-        setTimerIntervalId(null); // Clear previous interval
+      // Ana zamanlayıcıyı durdur ve son geri sayımı ayarla
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
       }
-      setTimeLeft(duration); // Set new time for final countdown
-      // Re-initialize a new countdown for the final phase if needed
-      // (The first useEffect for timeLeft handles this as timeLeft changes)
+      setTimeLeft(finalDuration); // Yeni son geri sayım süresi
+      // timeLeft useEffect'i bu yeni süreyi algılayıp yeni bir interval başlatacaktır
     };
 
-    // THIS IS THE NEW PART: Listen for votingStarted
+    // Oylama başladı olayını dinle (ÖNEMLİ KISIM)
     const onVotingStarted = (data) => {
-      console.log('Voting started! Navigating to VotingScreen with data:', data);
-      // Stop any active countdown timer
-      if (timerIntervalId) {
-        clearInterval(timerIntervalId);
-        setTimerIntervalId(null);
+      console.log('Oylama başladı! Voting ekranına yönlendiriliyor. Veri:', data);
+      // Zamanlayıcıyı durdur
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
       }
-      // Navigate to the VotingScreen, passing the necessary data
-      navigation.replace('VotingScreen', {
+      setTimeLeft(0); // Geri sayımı sıfırla/gizle
+      
+      // VotingScreen'e yönlendir ve gerekli verileri gönder
+      navigation.replace('Voting', { // <-- 'VotingScreen' yerine 'Voting' kullanıyoruz
         submissions: data.submissions,
         players: data.players,
-        roomCode: roomCode // Pass the current roomCode
+        roomCode: roomCode
       });
+    };
+
+    const onError = (error) => {
+        console.error("GameScreen'de Sunucu Hatası:", error);
+        Alert.alert("Hata", error.message || "Bir hata oluştu.");
     };
 
     socket.on('roundOver', onRoundOver);
     socket.on('finalCountdown', onFinalCountdown);
-    socket.on('votingStarted', onVotingStarted); // Register the new listener
+    socket.on('votingStarted', onVotingStarted); // Yeni listener
+    socket.on('error', onError); // Genel hata dinleyicisi
 
-    // Cleanup function: Unsubscribe from all listeners when component unmounts
+    // Component unmount olduğunda veya useEffect tekrar çalıştığında tüm dinleyicileri temizle
     return () => {
       socket.off('roundOver', onRoundOver);
       socket.off('finalCountdown', onFinalCountdown);
-      socket.off('votingStarted', onVotingStarted); // Unsubscribe from the new listener
-      if (timerIntervalId) { // Ensure timer is cleared on unmount
-        clearInterval(timerIntervalId);
+      socket.off('votingStarted', onVotingStarted);
+      socket.off('error', onError);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
       }
     };
-  }, [navigation, roomCode, timerIntervalId]); // Add timerIntervalId to dependencies
-
+  }, [navigation, roomCode, submitted]); // submitted'ı bağımlılıklara ekleyelim ki handleSubmitAnswers güncel state ile çalışsın
 
   const handleInputChange = (category, value) => {
     setAnswers(prev => ({ ...prev, [category.toLowerCase()]: value }));
@@ -100,9 +122,11 @@ const GameScreen = ({ route, navigation }) => {
 
   const handleSubmitAnswers = () => {
     if (!submitted) {
+      console.log('Cevaplar gönderiliyor...');
       socket.emit('submitAnswers', { roomCode, answers });
-      setSubmitted(true);
-      // Optional: You might want to disable the input fields here
+      setSubmitted(true); // Cevap gönderildi olarak işaretle
+      // Cevaplar gönderildikten sonra, input alanlarını devre dışı bırak
+      // ve kullanıcının tekrar göndermesini engelle
     }
   };
 
@@ -134,7 +158,8 @@ const GameScreen = ({ route, navigation }) => {
             placeholderTextColor="black"
             onChangeText={text => handleInputChange(category, text)}
             autoCapitalize="words"
-            editable={!submitted} // Disable input after submission
+            editable={!submitted} // Cevap gönderildiyse inputları devre dışı bırak
+            value={answers[category.toLowerCase()] || ''} // Değeri state'ten kontrol et
           />
         ))}
 
@@ -142,7 +167,8 @@ const GameScreen = ({ route, navigation }) => {
           <Button
             title={submitted ? "Cevaplar Gönderildi, Bekleniyor..." : "Cevapları Gönder"}
             onPress={handleSubmitAnswers}
-            disabled={submitted} // Disable button if already submitted
+            disabled={submitted} // Cevap gönderildiyse butonu devre dışı bırak
+            color={submitted ? "#cccccc" : "#007bff"} // Renk değişimi
           />
         </View>
       </ScrollView>
@@ -151,7 +177,7 @@ const GameScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { padding: 20, backgroundColor: '#f5f5f5', flexGrow: 1, justifyContent: 'center' },
+  container: { flexGrow: 1, padding: 20, backgroundColor: '#f5f5f5', justifyContent: 'center' },
   roundInfo: { fontSize: 18, fontWeight: '500', textAlign: 'center', marginBottom: 5, color: 'black' },
   timer: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: 'red', marginBottom: 10 },
   warningText: { fontSize: 16, textAlign: 'center', color: '#d9534f', marginBottom: 10, fontWeight: 'bold' },
