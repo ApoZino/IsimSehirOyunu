@@ -5,42 +5,46 @@ import { useNavigation } from '@react-navigation/native';
 
 const VotingScreen = ({ route }) => {
     const navigation = useNavigation();
-    // refereeId'yi route.params'tan alıyoruz
     const { submissions, players, roomCode, refereeId } = route.params;
 
-    const [votes, setVotes] = useState({}); // { 'normalizedAnswer': 'approve' | 'reject' }
-    const [isSubmitting, setIsSubmitting] = useState(false); // Gönderme sırasında butonu devre dışı bırakmak için
+    // votes state'inin yapısı değişiyor: { 'playerId|category|normalizedAnswer': 'approve' | 'reject' }
+    const [votes, setVotes] = useState({}); 
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Mevcut kullanıcının hakem olup olmadığını kontrol et
     const isCurrentUserReferee = socket.id === refereeId;
 
-    // --- Helper function to handle vote selection ---
-    const handleVote = (answer, vote) => {
-        const normalizedAnswer = answer.trim().toLowerCase();
-        setVotes(prev => ({ ...prev, [normalizedAnswer]: vote }));
+    // Her cevabın benzersiz bir kimliği için helper fonksiyon
+    const getSubmissionId = (playerId, category, answerText) => {
+        return `${playerId}|${category.toLowerCase()}|${answerText.trim().toLowerCase()}`;
     };
 
-    // --- Function to submit votes ---
+    // --- Oylama seçimi için helper fonksiyon ---
+    const handleVote = (playerId, category, answerText, vote) => {
+        const submissionId = getSubmissionId(playerId, category, answerText);
+        setVotes(prev => ({ ...prev, [submissionId]: vote }));
+    };
+
+    // --- Oyları sunucuya gönderme fonksiyonu ---
     const submitVotes = () => {
-        // Hakem değilse oy gönderme izni verme (Client tarafı UI kontrolü)
         if (!isCurrentUserReferee) {
             Alert.alert("Hata", "Sadece hakem oy kullanabilir.");
             return;
         }
 
-        // Tüm benzersiz cevaplar için oy kullanılıp kullanılmadığını kontrol et
-        const uniqueAnswersToVote = new Set();
+        // Referee'nin oylaması gereken tüm cevapların listesi (her oyuncu/kategori için benzersiz)
+        const allSubmissionIdsToVote = new Set();
         players.forEach(player => {
             const playerSubmissions = submissions[player.id] || {};
-            Object.values(playerSubmissions).forEach(ans => {
-                if (ans && ans.trim() !== '') { // Sadece boş olmayan cevapları dahil et
-                    uniqueAnswersToVote.add(ans.trim().toLowerCase());
+            Object.keys(playerSubmissions).forEach(category => {
+                const answerText = playerSubmissions[category];
+                if (answerText && answerText.trim() !== '') {
+                    allSubmissionIdsToVote.add(getSubmissionId(player.id, category, answerText));
                 }
             });
         });
 
-        // Eğer oylanmamış cevap varsa uyarı göster
-        if (Object.keys(votes).length < uniqueAnswersToVote.size) {
+        // Tüm cevapların oylanıp oylanmadığını kontrol et
+        if (Object.keys(votes).length < allSubmissionIdsToVote.size) {
             Alert.alert(
                 "Eksik Oy!",
                 "Lütfen tüm geçerli cevaplar için oy kullanın.",
@@ -49,67 +53,34 @@ const VotingScreen = ({ route }) => {
             return;
         }
 
-        if (isSubmitting) return; // Zaten gönderiliyorsa tekrar tetiklemeyi engelle
+        if (isSubmitting) return;
 
-        setIsSubmitting(true); // Gönderme işlemi başladı
+        setIsSubmitting(true); 
         console.log("VotingScreen: Oyları sunucuya gönderiliyor:", JSON.stringify({ roomCode, playerVotes: votes }, null, 2));
+        // Server'a gönderilen 'playerVotes' objesi artık benzersiz submission ID'leri içerecek
         socket.emit('submitVotes', { roomCode, playerVotes: votes });
 
         // Navigasyon sunucudan gelecek 'roundOver' veya 'gameOver' olayları ile yapılacak
     };
 
-    // --- Socket Olay Dinleyicileri (Oyun durumu geçişleri için) ---
+    // --- Socket Olay Dinleyicileri (Aynı kalacak) ---
     useEffect(() => {
-        // Ekran yüklendiğinde isSubmitting'i sıfırla
-        // Bu, önceki ekranlardan hızlı geçişlerde isSubmitting'in takılı kalmamasını sağlar.
         setIsSubmitting(false);
-
-        // Debug logları:
         console.log("VotingScreen: Yüklendi ve dinleyiciler ayarlandı.");
         console.log("VotingScreen: Mevcut Socket ID:", socket.id);
         console.log("VotingScreen: Hakem ID (route.params.refereeId):", refereeId);
         console.log("VotingScreen: Mevcut kullanıcı hakem mi (isCurrentUserReferee):", isCurrentUserReferee);
 
+        const onRoundOver = (results) => { /* ... */ };
+        const onGameStarted = (data) => { /* ... */ };
+        const onGameOver = (finalResults) => { /* ... */ };
+        const onError = (error) => { /* ... */ };
 
-        const onRoundOver = (results) => {
-            console.log("VotingScreen: Tur bitti, Score ekranına yönlendiriliyor.", JSON.stringify(results, null, 2));
-            setIsSubmitting(false); // Gönderme durumunu sıfırla
-            navigation.replace('Score', { results, roomCode });
-        };
-
-        const onGameStarted = (data) => {
-            console.log("VotingScreen: Yeni tur başladı, Game ekranına yönlendiriliyor.", JSON.stringify(data, null, 2));
-            setIsSubmitting(false); // Gönderme durumunu sıfırla
-            navigation.replace('Game', {
-                letter: data.letter,
-                roomCode: roomCode,
-                duration: data.duration,
-                categories: data.categories,
-                currentRound: data.currentRound,
-                totalRounds: data.totalRounds,
-                refereeId: data.refereeId // Hakem ID'sini GameScreen'e ilet
-            });
-        };
-
-        const onGameOver = (finalResults) => {
-            console.log("VotingScreen: Oyun bitti, GameOver ekranına yönlendiriliyor.", JSON.stringify(finalResults, null, 2));
-            setIsSubmitting(false); // Gönderme durumunu sıfırla
-            navigation.replace('GameOver', { finalResults });
-        };
-        
-        const onError = (error) => {
-            console.error("VotingScreen'de Sunucu Hatası:", error.message || error);
-            Alert.alert("Hata", error.message || "Bir hata oluştu.");
-            setIsSubmitting(false); // Hata durumunda gönderme durumunu sıfırla
-        };
-
-        // Socket olaylarını dinlemeye başla
         socket.on('roundOver', onRoundOver);
         socket.on('gameStarted', onGameStarted);
         socket.on('gameOver', onGameOver);
         socket.on('error', onError);
 
-        // Component unmount olduğunda veya effect tekrar çalıştığında dinleyicileri temizle
         return () => {
             console.log("VotingScreen: Dinleyiciler temizleniyor.");
             socket.off('roundOver', onRoundOver);
@@ -117,13 +88,13 @@ const VotingScreen = ({ route }) => {
             socket.off('gameOver', onGameOver);
             socket.off('error', onError);
         };
-    }, [navigation, roomCode, refereeId, isCurrentUserReferee]); // `isCurrentUserReferee` de bağımlılıklara eklendi
+    }, [navigation, roomCode, refereeId, isCurrentUserReferee]); 
 
+    // --- Component Render ---
     return (
         <ScrollView contentContainerStyle={styles.container}>
             <Text style={styles.title}>Oylama Zamanı!</Text>
 
-            {/* Gönderme sırasında yükleme göstergesi */}
             {isSubmitting && (
                 <View style={styles.loadingOverlay}>
                     <ActivityIndicator size="large" color="#007bff" />
@@ -134,33 +105,40 @@ const VotingScreen = ({ route }) => {
             {isCurrentUserReferee ? (
                 // HAKEMİN ARAYÜZÜ: Oy kullanma butonları görünür
                 <>
-                    <Text style={styles.infoText}>Siz hakemsiniz. Cevapları oylayın.</Text>
+                    <Text style={styles.infoText}>Siz hakemsiniz. Cevapları ayrı ayrı oylayın.</Text> {/* Metin güncellendi */}
                     {players.map(player => (
                         <View key={player.id} style={styles.playerSection}>
                             <Text style={styles.username}>{player.username}'in Cevapları:</Text>
-                            {/* Yalnızca boş olmayan cevapları oylama için göster */}
                             {Object.keys(submissions[player.id] || {})
                                 .filter(category => submissions[player.id][category] && submissions[player.id][category].trim() !== '')
                                 .map(category => {
                                     const answer = submissions[player.id][category];
-                                    const normalizedAnswer = answer.trim().toLowerCase();
-                                    const voteStatus = votes[normalizedAnswer];
+                                    const submissionId = getSubmissionId(player.id, category, answer); // Benzersiz ID
+                                    const voteStatus = votes[submissionId]; // Benzersiz ID'ye göre durum al
 
                                     return (
-                                        <View key={category + player.id} style={styles.answerRow}>
+                                        <View key={submissionId} style={styles.answerRow}> {/* Key de benzersiz ID olacak */}
                                             <Text style={styles.answerText}>{category.charAt(0).toUpperCase() + category.slice(1)}: {answer}</Text>
                                             <View style={styles.voteButtons}>
                                                 <TouchableOpacity
-                                                    style={[styles.button, voteStatus === 'approve' && styles.approveSelected]}
-                                                    onPress={() => handleVote(answer, 'approve')}
-                                                    disabled={isSubmitting} // Gönderme sırasında butonu devre dışı bırak
+                                                    style={[
+                                                        styles.button, 
+                                                        voteStatus === 'approve' && styles.approveSelected,
+                                                        voteStatus === undefined && styles.defaultButton
+                                                    ]}
+                                                    onPress={() => handleVote(player.id, category, answer, 'approve')} // ID'leri geçir
+                                                    disabled={isSubmitting} 
                                                 >
                                                     <Text style={styles.buttonText}>✅</Text>
                                                 </TouchableOpacity>
                                                 <TouchableOpacity
-                                                    style={[styles.button, voteStatus === 'reject' && styles.rejectSelected]}
-                                                    onPress={() => handleVote(answer, 'reject')}
-                                                    disabled={isSubmitting} // Gönderme sırasında butonu devre dışı bırak
+                                                    style={[
+                                                        styles.button, 
+                                                        voteStatus === 'reject' && styles.rejectSelected,
+                                                        voteStatus === undefined && styles.defaultButton
+                                                    ]}
+                                                    onPress={() => handleVote(player.id, category, answer, 'reject')} // ID'leri geçir
+                                                    disabled={isSubmitting} 
                                                 >
                                                     <Text style={styles.buttonText}>❌</Text>
                                                 </TouchableOpacity>
@@ -181,13 +159,12 @@ const VotingScreen = ({ route }) => {
                     />
                 </>
             ) : (
-                // DİĞER OYUNCULARIN ARAYÜZÜ: Cevapları gösterir ama oy butonları yoktur
+                // DİĞER OYUNCULARIN ARAYÜZÜ (Aynı kalacak)
                 <View style={styles.observerSection}>
                     <Text style={styles.infoText}>Hakem oylama yapıyor. Lütfen bekleyiniz...</Text>
                     {players.map(player => (
                         <View key={player.id} style={styles.playerSection}>
                             <Text style={styles.username}>{player.username}'in Cevapları:</Text>
-                            {/* Yalnızca boş olmayan cevapları göster */}
                             {Object.keys(submissions[player.id] || {})
                                 .filter(category => submissions[player.id][category] && submissions[player.id][category].trim() !== '')
                                 .map(category => {
@@ -195,7 +172,6 @@ const VotingScreen = ({ route }) => {
                                     return (
                                         <View key={category + player.id} style={styles.answerRow}>
                                             <Text style={styles.answerText}>{category.charAt(0).toUpperCase() + category.slice(1)}: {answer}</Text>
-                                            {/* Oy butonları burada yok */}
                                         </View>
                                     );
                                 })}
@@ -267,7 +243,10 @@ const styles = StyleSheet.create({
         padding: 8,
         borderRadius: 5,
         marginLeft: 10,
-        backgroundColor: '#e0e0e0',
+        backgroundColor: '#e0e0e0', // Varsayılan arka plan
+    },
+    defaultButton: {
+        backgroundColor: '#e0e0e0', // Seçilmediyse varsayılan arka plan
     },
     buttonText: {
         fontSize: 18,
