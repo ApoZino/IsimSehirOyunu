@@ -7,6 +7,8 @@ import ScoreScreen from '../screens/ScoreScreen';
 import GameOverScreen from '../screens/GameOverScreen';
 import VotingScreen from '../screens/VotingScreen';
 import DisputeScreen from '../screens/DisputeScreen';
+import LoginScreen from '../screens/LoginScreen';
+import RegisterScreen from '../screens/RegisterScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -19,6 +21,8 @@ const AppNavigator = () => (
     <Stack.Screen name="Voting" component={VotingScreen} />
     <Stack.Screen name="Score" component={ScoreScreen} />
     <Stack.Screen name="GameOver" component={GameOverScreen} />
+    <Stack.Screen name="Login" component={LoginScreen} />
+    <Stack.Screen name="Register" component={RegisterScreen} />
   </Stack.Navigator>
 );
 

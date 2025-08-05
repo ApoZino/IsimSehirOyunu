@@ -1,0 +1,31 @@
+// Bu dosya, veritabanımızın yapısını tanımlar.
+// Prisma, bu dosyayı okuyarak tabloları otomatik oluşturur.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // .env dosyasındaki adresi kullanır
+}
+
+// Kullanıcı profilini, level'ını ve şifresini tutacak modelimiz
+model User {
+  id        String   @id @default(cuid()) // Benzersiz ve otomatik oluşturulan ID
+  createdAt DateTime @default(now())      // Kayıt oluşturulma tarihi
+  updatedAt DateTime @updatedAt          // Kayıt güncellenme tarihi
+
+  username  String   @unique // Her kullanıcı adı benzersiz olmalı
+  email     String   @unique // Her email benzersiz olmalı
+  password  String   // Şifrelenmiş (hashed) şifreyi burada tutacağız
+
+  // Oyun İstatistikleri
+  level     Int      @default(1)    // Başlangıç seviyesi 1
+  xp        Int      @default(0)    // Başlangıç tecrübe puanı 0
+  avatarUrl String?  // Avatar resmi URL'si (isteğe bağlı olduğu için ? işareti var)
+  
+  gamesPlayed Int @default(0)
+  gamesWon    Int @default(0)
+  gamesLost   Int @default(0
+}
