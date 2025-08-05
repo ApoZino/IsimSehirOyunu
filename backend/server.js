@@ -1,27 +1,30 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require("socket.io");
-const registerSocketHandlers = require('./sockets'); // Bütün olayları yöneten ana dosyayı import et
+const registerSocketHandlers = require('./sockets');
 const authRoutes = require('./routes/auth');
 
 const app = express();
 const server = http.createServer(app);
-const PORT = process.env.PORT || 3000; // Render için PORT ayarı
+const PORT = process.env.PORT || 3000;
 
-// JSON body'lerini okuyabilmek için bu middleware'i ekle
+// --- KRİTİK DÜZELTME BURADA ---
+// Bu satır, sunucuya gelen JSON formatındaki verileri okuyup
+// req.body'nin içine koymasını sağlar.
+// Bu satır, rotalardan ('/api/auth') ÖNCE gelmelidir.
 app.use(express.json());
 
-// Merkezi oyun durumu (state)
+// API rotalarını kullan
+app.use('/api/auth', authRoutes);
+
+// Merkezi oyun durumu
 const rooms = {};
 
 const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// API rotalarını kullan
-app.use('/api/auth', authRoutes);
-
-// io örneğini ve rooms objesini tüm olay yöneticilerine (socket handlers) ilet
+// io örneğini ve rooms objesini soket handler'larınıza iletin
 registerSocketHandlers(io, rooms);
 
 server.listen(PORT, () => {
