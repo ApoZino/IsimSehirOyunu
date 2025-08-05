@@ -8,7 +8,8 @@ const SettingsScreen = ({ navigation }) => {
 
     const toggleSound = () => {
         setIsSoundEnabled(previousState => !previousState);
-        // Burada soundService'deki bir fonksiyonu çağırarak sesi açıp kapatacağız.
+        // Gelecekte bu ayarı AsyncStorage'a kaydedebilir ve
+        // soundService'i bu ayara göre çalışacak şekilde güncelleyebiliriz.
     };
 
     return (
@@ -44,8 +45,17 @@ const SettingsScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 20, backgroundColor: '#f5f5f5' },
-    title: { fontSize: 32, fontWeight: 'bold', marginBottom: 30 },
+    container: { 
+        flex: 1, 
+        padding: 20, 
+        backgroundColor: '#f5f5f5' 
+    },
+    title: { 
+        fontSize: 32, 
+        fontWeight: 'bold', 
+        marginBottom: 30,
+        color: 'black'
+    },
     settingRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -54,12 +64,21 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#ddd',
         backgroundColor: 'white',
-        paddingHorizontal: 10,
+        paddingHorizontal: 15,
+        borderRadius: 10,
+        marginBottom: 10,
     },
-    settingText: { fontSize: 18 },
-    languageText: { fontSize: 18, color: 'grey' },
+    settingText: { 
+        fontSize: 18,
+        color: 'black'
+    },
+    languageText: { 
+        fontSize: 18, 
+        color: 'grey' 
+    },
     buttonContainer: {
         marginTop: 'auto', // Butonları en alta iter
+        paddingBottom: 20,
     }
 });
 
