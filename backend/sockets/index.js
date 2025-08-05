@@ -5,6 +5,7 @@ const submitAnswersHandler = require('./submitAnswers');
 const submitVotesHandler = require('./submitVotes');
 const submitDisputeHandler = require('./submitDispute');
 const disconnectHandler = require('./disconnect');
+const chatHandler = require('./chatHandler');
 
 // --- ÇEKİRDEK OYUN FONKSİYONLARI ---
 
@@ -67,10 +68,8 @@ function processDisputes(io, rooms, roomCode) {
     });
 
     if (Object.keys(room.disputes).length === 0) {
-        console.log(`Hiç itiraz yok, doğrudan puanlama. Oda: ${roomCode}`);
         calculateFinalScores(io, rooms, roomCode);
     } else {
-        console.log(`${Object.keys(room.disputes).length} itiraz var, oylama başlıyor. Oda: ${roomCode}`);
         startVotingPhase(io, rooms, roomCode, disputedSubmissions);
     }
 }
@@ -86,59 +85,65 @@ function startVotingPhase(io, rooms, roomCode, disputedSubmissions) {
 
 function calculateFinalScores(io, rooms, roomCode) {
     const room = rooms[roomCode];
-    if (!room) {
-        console.error(`HATA: calculateFinalScores içinde oda bulunamadı: ${roomCode}`);
-        return;
-    }
+    if (!room) return;
     
-    console.log(`--- Puan Hesaplanıyor: Oda ${roomCode}, Tur ${room.currentRound} ---`);
     room.votingStarted = false;
-    room.disputePhase = false; // Her ihtimale karşı
+    room.disputePhase = false;
 
     const { players, submissions, votes, currentLetter, categories, disputes } = room;
     const roundResults = {};
 
     try {
+        const answersCount = {};
+        categories.forEach(cat => {
+            answersCount[cat] = {};
+        });
+
+        // 1. Adım: Tüm geçerli cevapları say
+        players.forEach(player => {
+            const playerAnswers = submissions[player.id] || {};
+            categories.forEach(category => {
+                const answer = (playerAnswers[category] || "").trim().toLowerCase();
+                if (!answer) return;
+
+                const submissionId = `${player.id}|${category}|${answer}`;
+                const isDisputed = disputes && disputes[submissionId];
+                const refereeVote = votes ? votes[submissionId] : undefined;
+                let isApproved = !isDisputed || refereeVote === 'approve';
+
+                if (isApproved && answer.startsWith(currentLetter.toLowerCase())) {
+                    answersCount[category][answer] = (answersCount[category][answer] || 0) + 1;
+                }
+            });
+        });
+
+        // 2. Adım: Her oyuncu için puanları hesapla
         players.forEach(player => {
             const playerAnswers = submissions[player.id] || {};
             let roundScore = 0;
             const scoresByCategory = {};
 
             categories.forEach(category => {
-                const catLower = category.toLowerCase();
-                const answer = (playerAnswers[catLower] || "").trim().toLowerCase();
-                const submissionId = `${player.id}|${catLower}|${answer}`;
+                const answer = (playerAnswers[category] || "").trim().toLowerCase();
                 let points = 0;
-                
+
+                const submissionId = `${player.id}|${category}|${answer}`;
                 const isDisputed = disputes && disputes[submissionId];
                 const refereeVote = votes ? votes[submissionId] : undefined;
-
-                let isApproved = false;
-                if (!isDisputed) {
-                    isApproved = true; // İtiraz yoksa, onaylanmış say
-                } else if (refereeVote === 'approve') {
-                    isApproved = true; // İtiraz var ama hakem onayladı
-                }
+                
+                let isApproved = !isDisputed || refereeVote === 'approve';
 
                 if (answer && answer.startsWith(currentLetter.toLowerCase()) && isApproved) {
-                    let count = 0;
-                    players.forEach(p => {
-                        const otherAnswer = (submissions[p.id]?.[catLower] || "").trim().toLowerCase();
-                        if(otherAnswer === answer) {
-                           const otherSubId = `${p.id}|${catLower}|${otherAnswer}`;
-                           const otherIsDisputed = disputes && disputes[otherSubId];
-                           const otherRefereeVote = votes ? votes[otherSubId] : undefined;
-                           if (!otherIsDisputed || otherRefereeVote === 'approve') {
-                               count++;
-                           }
-                        }
-                    });
-                    if (count === 1) points = 15;
-                    else if (count > 1) points = 10;
-                } else if (answer && answer.startsWith(currentLetter.toLowerCase()) && !isApproved) {
-                    points = 5;
+                    const count = answersCount[category][answer] || 0;
+                    if (count === 1) {
+                        points = 10;
+                    } else if (count > 1) {
+                        points = 5;
+                    }
                 }
-                scoresByCategory[category.charAt(0).toUpperCase() + category.slice(1)] = points;
+                
+                const capitalizedCategory = category.charAt(0).toUpperCase() + category.slice(1);
+                scoresByCategory[capitalizedCategory] = points;
                 roundScore += points;
             });
 
@@ -153,20 +158,16 @@ function calculateFinalScores(io, rooms, roomCode) {
         });
 
         const finalResults = Object.values(roundResults);
-        console.log(`Puanlama Başarılı. Sonuçlar gönderiliyor: Oda ${roomCode}`);
         io.to(roomCode).emit('roundOver', finalResults);
 
         if (room.currentRound >= room.totalRounds) {
-            console.log(`Oyun Bitti. Oda: ${roomCode}`);
             io.to(roomCode).emit('gameOver', finalResults.sort((a,b) => b.totalScore - a.totalScore));
             delete rooms[roomCode];
         } else {
-            console.log(`Yeni tur 10 saniye içinde başlayacak. Oda: ${roomCode}`);
             setTimeout(() => startNewRound(io, rooms, roomCode), 10000);
         }
     } catch (e) {
-        console.error(`!!!! PUANLAMA SIRASINDA KRİTİK HATA !!!! Oda: ${roomCode}`);
-        console.error(e);
+        console.error(`!!!! PUANLAMA SIRASINDA KRİTİK HATA !!!! Oda: ${roomCode}`, e);
         io.to(roomCode).emit('error', { message: 'Puanlama sırasında sunucuda bir hata oluştu.' });
     }
 }
@@ -184,5 +185,6 @@ module.exports = (io, rooms) => {
         submitVotesHandler(socket, io, rooms, calculateFinalScores);
         submitDisputeHandler(socket, io, rooms); 
         disconnectHandler(socket, io, rooms, startDisputePhase, calculateFinalScores);
+        chatHandler(socket, io, rooms);
     });
 };
