@@ -29,5 +29,5 @@ model User {
   
   gamesPlayed Int @default(0)
   gamesWon    Int @default(0)
-  gamesLost   Int @default(0
+  gamesLost   Int @default(0)
 }
